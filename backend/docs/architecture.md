@@ -60,7 +60,7 @@ flowchart TB
     subgraph adapters["Adapters (Spring)"]
         web["adapter:web<br/>REST controllers, DTOs,<br/>validation, OpenAPI, error handling"]
         persistence["adapter:persistence<br/>Spring Data JDBC, Flyway,<br/>mappers, SpringTransactionRunner"]
-        security["adapter:security<br/>Resource server, Keycloak roles,<br/>JwtCurrentUserProvider"]
+        security["adapter:security (planned)<br/>Resource server, Keycloak roles,<br/>JwtCurrentUserProvider"]
     end
 
     subgraph coreLayer["Core (pure Kotlin)"]
@@ -87,10 +87,10 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 | Module | Responsibility | May depend on | Key dependencies |
 |---|---|---|---|
 | `core` | Domain models, business rules, use cases, all ports (repositories, `CurrentUserProvider`, `TransactionRunner`), domain exceptions | – | Kotlin stdlib only (**no Spring**) |
-| `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `starter-validation`, `springdoc-openapi-starter-webmvc-ui`, `jackson-module-kotlin` |
-| `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `flyway-core`, `flyway-database-postgresql`, `postgresql` (runtime) |
-| `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` (added with auth) | `core` | `starter-oauth2-resource-server` |
-| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `starter-actuator`, `spring-boot-docker-compose`, Testcontainers |
+| `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `jackson-module-kotlin` (Jackson 3); planned: `starter-validation`, `springdoc-openapi-starter-webmvc-ui` |
+| `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `starter-flyway`, `flyway-database-postgresql`, `postgresql` (runtime) |
+| `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` (planned, added with auth) | `core` | `starter-oauth2-resource-server` |
+| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `spring-boot-docker-compose` (dev only), Testcontainers; planned: `starter-actuator` |
 
 ### 3.2 Architecture Rules
 
@@ -107,7 +107,9 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 
 ## 4. Request Flow
 
-Example: `POST /api/books` (create a book)
+Example: `POST /api/v1/books` (create a book). All `@RestController`s get the `/api/v1` prefix from `WebConfig`.
+
+The security, `@Valid`, current-user and transaction steps are part of the target design and not implemented yet.
 
 ```mermaid
 sequenceDiagram
@@ -117,25 +119,25 @@ sequenceDiagram
     participant Ctrl as adapter:web<br/>BookController
     participant UC as core<br/>AddBookUseCase
     participant Tx as adapter:persistence<br/>SpringTransactionRunner
-    participant Jdbc as adapter:persistence<br/>BookJdbcAdapter
+    participant Jdbc as adapter:persistence<br/>JdbcBookRepository
     participant DB as PostgreSQL
 
-    App->>Sec: POST /api/books + Bearer JWT
+    App->>Sec: POST /api/v1/books + Bearer JWT
     Sec->>Sec: Validate JWT (signature via JWKS, issuer, expiry)
     Sec->>Ctrl: Authenticated request
     Ctrl->>Ctrl: Validate CreateBookRequest (@Valid)
-    Ctrl->>UC: execute(command)
+    Ctrl->>UC: addBookUseCase(command)
     Note over Ctrl,UC: DTO → domain command
     UC->>UC: currentUser via CurrentUserProvider port
+    UC->>UC: Build Book (new BookId, timestamps from Clock)
     UC->>Tx: TransactionRunner.run { … }
     Tx->>DB: BEGIN
-    UC->>Jdbc: save(book) via BookRepository port
-    Jdbc->>DB: INSERT (Spring Data JDBC)
-    DB-->>Jdbc: Row
-    Jdbc-->>UC: Book (entity → domain)
+    UC->>Jdbc: add(book) via BookRepository port
+    Note over UC,Jdbc: Domain → entity
+    Jdbc->>DB: INSERT (JdbcAggregateTemplate)
     Tx->>DB: COMMIT (ROLLBACK on exception)
     UC-->>Ctrl: Book
-    Ctrl-->>App: 201 Created + BookResponse
+    Ctrl-->>App: 201 Created + Location + BookResponse
     Note over Ctrl,App: Domain → DTO, errors as ProblemDetail
 ```
 
@@ -143,50 +145,64 @@ sequenceDiagram
 
 Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>` (e.g. `core.book`, `adapter.web.book`). The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
 
+Within a feature package, the code is grouped further into sub-packages: `models` and `usecases` in `core` (e.g. `core.book.models`, `core.book.usecases`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`). Cross-feature code lives in `shared` (core) or `common` (adapters).
+
+Files marked *(planned)* don't exist yet.
+
 ```
 backend/
 ├─ build-logic/                               # Convention plugins
 ├─ gradle/libs.versions.toml                  # Central versions
 ├─ core/src/main/kotlin/com/sauerwein/booktracker/core/
 │  ├─ shared/
-│  │  ├─ CurrentUserProvider.kt               # Port
-│  │  ├─ TransactionRunner.kt                 # Port
-│  │  ├─ UserId.kt                            # Value object (Keycloak sub)
-│  │  └─ NotFoundException.kt
+│  │  ├─ CurrentUserProvider.kt               # Port (planned)
+│  │  ├─ TransactionRunner.kt                 # Port (planned)
+│  │  ├─ UserId.kt                            # Value object, Keycloak sub (planned)
+│  │  └─ exception/NotFoundException.kt
 │  └─ book/
-│     ├─ Book.kt                              # Domain model (data class)
-│     ├─ BookId.kt                            # Value object
 │     ├─ BookRepository.kt                    # Outbound port (interface)
-│     ├─ AddBookUseCase.kt                    # Use case + AddBookCommand
-│     └─ GetMyBooksUseCase.kt
+│     ├─ models/
+│     │  ├─ Book.kt                           # Domain model + BookId value object
+│     │  └─ Isbn.kt                           # Value object, always a valid ISBN-13
+│     └─ usecases/
+│        ├─ AddBookUseCase.kt                 # Use case + AddBookCommand
+│        ├─ GetBookUseCase.kt
+│        └─ GetBooksUseCase.kt
 ├─ adapter/web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
-│  ├─ common/GlobalExceptionHandler.kt        # → ProblemDetail
-│  ├─ common/OpenApiConfig.kt
+│  ├─ common/
+│  │  ├─ GlobalExceptionHandler.kt            # → ProblemDetail
+│  │  ├─ WebConfig.kt                         # /api/v1 prefix for all @RestControllers
+│  │  └─ OpenApiConfig.kt                     # (planned)
 │  └─ book/
 │     ├─ BookController.kt
-│     ├─ BookDtos.kt                          # CreateBookRequest, BookResponse
-│     └─ BookWebMapper.kt
+│     ├─ BookWebMapper.kt
+│     └─ dtos/
+│        ├─ CreateBookRequest.kt
+│        └─ BookResponse.kt
 ├─ adapter/persistence/src/main/
 │  ├─ kotlin/com/sauerwein/booktracker/adapter/persistence/
-│  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner
+│  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner (planned)
 │  │  └─ book/
 │  │     ├─ BookEntity.kt                     # @Table data class
-│  │     ├─ BookJdbcRepository.kt             # Spring Data CrudRepository
-│  │     ├─ BookJdbcAdapter.kt                # implements core BookRepository
+│  │     ├─ BookDao.kt                        # Spring Data ListCrudRepository
+│  │     ├─ JdbcBookRepository.kt             # implements core BookRepository
 │  │     └─ BookPersistenceMapper.kt
-│  └─ resources/db/migration/V1__init.sql
-├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/
+│  └─ resources/db/migration/
+│     ├─ V1__init.sql
+│     └─ V2__book.sql
+├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/   # (planned)
 │  ├─ SecurityConfig.kt                       # SecurityFilterChain
 │  ├─ KeycloakRoleConverter.kt                # realm_access.roles → ROLE_*
 │  └─ JwtCurrentUserProvider.kt
 ├─ bootstrap/src/
 │  ├─ main/kotlin/com/sauerwein/booktracker/
 │  │  ├─ BookTrackerApplication.kt
-│  │  └─ config/UseCaseConfig.kt              # @Bean per use case
+│  │  └─ config/UseCaseConfig.kt              # @Bean per use case, Clock bean
 │  ├─ main/resources/application.yaml
 │  └─ test/kotlin/...                         # Integration tests (Testcontainers)
-├─ compose.yaml                               # Postgres + Keycloak
-└─ keycloak/realm-booktracker.json            # Realm import for local development
+├─ compose.yaml                               # Local dev: Postgres (Keycloak planned)
+├─ compose.prod.yaml                          # Production: app + Postgres
+└─ keycloak/realm-booktracker.json            # Realm import for local development (planned)
 ```
 
 Wiring a use case in `bootstrap`:
@@ -195,10 +211,17 @@ Wiring a use case in `bootstrap`:
 @Configuration
 class UseCaseConfig {
     @Bean
-    fun addBookUseCase(books: BookRepository, currentUser: CurrentUserProvider, tx: TransactionRunner) =
-        AddBookUseCase(books, currentUser, tx)
+    fun clock(): Clock = Clock.systemUTC()
+
+    @Bean
+    fun addBookUseCase(bookRepository: BookRepository, clock: Clock) = AddBookUseCase(
+        bookRepository = bookRepository,
+        clock = clock
+    )
 }
 ```
+
+Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the same way.
 
 ## 6. Build Setup
 
@@ -224,8 +247,8 @@ class UseCaseConfig {
 - Keycloak client `booktracker-app`: public client, standard flow + PKCE (S256), redirect URI via app scheme.
 
 ### Validation & Error Handling
-- Bean Validation on request DTOs (`@field:NotBlank`, `@field:Size`, …) and `@Valid` in the controller.
-- Business invariants are checked by the domain model itself (e.g. `require(...)` in the `init` block).
+- Bean Validation on request DTOs (`@field:NotBlank`, `@field:Size`, …) and `@Valid` in the controller (planned).
+- Business invariants are checked by the domain model itself (e.g. `require(...)` in the `init` block of `Book`, `Isbn.of(...)`). For now, the resulting `IllegalArgumentException` is mapped to 400; domain-specific exceptions are to replace this.
 - A global `@RestControllerAdvice` translates errors consistently into **ProblemDetail (RFC 9457)**:
 
 | Error | HTTP status |
@@ -242,7 +265,7 @@ class UseCaseConfig {
 ### Database & Migrations
 - The schema is managed **exclusively via Flyway** (`adapter/persistence/src/main/resources/db/migration`), no automatic schema generation.
 - Naming scheme: `V<n>__<description>.sql`. Migrations that have already been applied are never modified.
-- User ownership via an `owner_id` column (Keycloak `sub`, UUID), no user table with passwords.
+- User ownership via an `owner_id` column (Keycloak `sub`, UUID), no user table with passwords (planned, added with auth; `V2__book.sql` has no `owner_id` yet).
 
 ### Images
 - MVP: only book covers from the external book API. The backend stores just the `cover_url` on the book. The app loads the image directly from the external source; the backend neither stores nor serves image files.
@@ -366,9 +389,9 @@ class UseCaseConfig {
 
 | Service | Port | Purpose |
 |---|---|---|
-| Backend | 8080 | REST API, Swagger UI at `/swagger-ui.html` |
+| Backend | 8080 | REST API under `/api/v1`, Swagger UI at `/swagger-ui.html` (planned) |
 | PostgreSQL | 5432 | App database |
-| Keycloak | 8180 | IdP, admin console, realm `booktracker` (imported from `keycloak/realm-booktracker.json`) |
+| Keycloak | 8180 | IdP, admin console, realm `booktracker` (imported from `keycloak/realm-booktracker.json`) (planned) |
 
 `./gradlew :bootstrap:bootRun` automatically starts the services from `compose.yaml` via `spring-boot-docker-compose`.
 
@@ -376,8 +399,8 @@ class UseCaseConfig {
 
 Detailed implementation plan with checklists: `docs/roadmap.md` (local only, not versioned)
 
-1. Implement the skeleton: create the modules `core`, `:adapter:web`, `:adapter:persistence`, `bootstrap`; move the existing `src/` into `bootstrap`
-2. Add `compose.yaml` and the Keycloak realm export
-3. Basic configuration for security, error handling and OpenAPI
-4. First feature `book` as reference implementation through all layers
+1. ✅ Implement the skeleton: create the modules `core`, `:adapter:web`, `:adapter:persistence`, `bootstrap`; move the existing `src/` into `bootstrap`
+2. Add `compose.yaml` (✅ Postgres) and the Keycloak realm export
+3. Basic configuration for security, error handling (✅ basic `GlobalExceptionHandler`) and OpenAPI
+4. First feature `book` as reference implementation through all layers (✅ create, get one, get all; without auth and transactions)
 5. Optional: architecture tests (e.g. Konsist) for rules within a module
