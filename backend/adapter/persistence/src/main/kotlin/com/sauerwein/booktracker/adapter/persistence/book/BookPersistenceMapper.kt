@@ -1,8 +1,8 @@
 package com.sauerwein.booktracker.adapter.persistence.book
 
-import com.sauerwein.booktracker.core.book.Book
-import com.sauerwein.booktracker.core.book.BookId
-import com.sauerwein.booktracker.core.book.Isbn
+import com.sauerwein.booktracker.core.book.models.Book
+import com.sauerwein.booktracker.core.book.models.BookId
+import com.sauerwein.booktracker.core.book.models.Isbn
 
 fun BookEntity.toDomain() = Book(
     id = BookId(id),

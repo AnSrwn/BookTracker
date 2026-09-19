@@ -1,4 +1,4 @@
-package com.sauerwein.booktracker.core.book
+package com.sauerwein.booktracker.core.book.models
 
 import kotlin.test.Test
 import kotlin.test.assertContains

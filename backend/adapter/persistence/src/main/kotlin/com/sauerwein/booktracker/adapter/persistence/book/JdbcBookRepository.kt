@@ -1,8 +1,8 @@
 package com.sauerwein.booktracker.adapter.persistence.book
 
-import com.sauerwein.booktracker.core.book.Book
-import com.sauerwein.booktracker.core.book.BookId
 import com.sauerwein.booktracker.core.book.BookRepository
+import com.sauerwein.booktracker.core.book.models.Book
+import com.sauerwein.booktracker.core.book.models.BookId
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component

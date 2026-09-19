@@ -1,4 +1,4 @@
-package com.sauerwein.booktracker.core.book
+package com.sauerwein.booktracker.core.book.models
 
 private const val ISBN_10_LENGTH = 10
 private const val ISBN_13_LENGTH = 13
