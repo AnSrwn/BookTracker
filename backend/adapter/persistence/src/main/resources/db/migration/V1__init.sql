@@ -1,0 +1,2 @@
+-- Baseline migration: verifies that Flyway runs against the database.
+-- Feature tables follow in their own migrations (e.g. V2__book.sql).
