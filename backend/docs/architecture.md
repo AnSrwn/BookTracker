@@ -117,7 +117,7 @@ sequenceDiagram
     participant Ctrl as adapter:web<br/>BookController
     participant UC as core<br/>AddBookUseCase
     participant Tx as adapter:persistence<br/>SpringTransactionRunner
-    participant Jdbc as adapter:persistence<br/>BookJdbcAdapter
+    participant Jdbc as adapter:persistence<br/>BookRepositoryImpl
     participant DB as PostgreSQL
 
     App->>Sec: POST /api/books + Bearer JWT
@@ -171,8 +171,8 @@ backend/
 │  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner
 │  │  └─ book/
 │  │     ├─ BookEntity.kt                     # @Table data class
-│  │     ├─ BookJdbcRepository.kt             # Spring Data CrudRepository
-│  │     ├─ BookJdbcAdapter.kt                # implements core BookRepository
+│  │     ├─ BookDao.kt                        # Spring Data ListCrudRepository
+│  │     ├─ BookRepositoryImpl.kt             # implements core BookRepository
 │  │     └─ BookPersistenceMapper.kt
 │  └─ resources/db/migration/V1__init.sql
 ├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/
