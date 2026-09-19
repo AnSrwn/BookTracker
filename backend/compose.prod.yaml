@@ -1,6 +1,8 @@
 # Start: docker compose -f compose.prod.yaml up -d
 # Requires DB_USERNAME and DB_PASSWORD, e.g. in a .env file (see .env.example).
 
+name: booktracker-prod
+
 services:
   app:
     image: booktracker-backend:latest

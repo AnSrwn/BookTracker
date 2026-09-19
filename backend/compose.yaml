@@ -1,3 +1,5 @@
+name: booktracker-dev
+
 services:
   postgres:
     image: postgres:18
