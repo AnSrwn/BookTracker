@@ -51,3 +51,8 @@ compose.override.yaml
 
 ### Logs ###
 *.log
+
+### build-logic uses the main wrapper (IntelliJ may regenerate one there) ###
+build-logic/gradlew
+build-logic/gradlew.bat
+build-logic/gradle/
