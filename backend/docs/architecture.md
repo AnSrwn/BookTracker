@@ -1,6 +1,6 @@
 # BookTracker Backend – Architecture
 
-> Status: Draft · Last updated: 2026-09-19
+> Status: Draft · Last updated: 2026-09-20
 
 ## 1. Context & Goals
 
@@ -87,7 +87,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 | Module | Responsibility | May depend on | Key dependencies |
 |---|---|---|---|
 | `core` | Domain models, business rules, use cases, all ports (repositories, `CurrentUserProvider`, `TransactionRunner`), domain exceptions | – | Kotlin stdlib only (**no Spring**) |
-| `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `jackson-module-kotlin` (Jackson 3); planned: `starter-validation`, `springdoc-openapi-starter-webmvc-ui` |
+| `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `jackson-module-kotlin` (Jackson 3), `starter-validation`, `springdoc-openapi-starter-webmvc-ui` |
 | `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `starter-flyway`, `flyway-database-postgresql`, `postgresql` (runtime) |
 | `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` (planned, added with auth) | `core` | `starter-oauth2-resource-server` |
 | `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `spring-boot-docker-compose` (dev only), Testcontainers; planned: `starter-actuator` |
@@ -107,7 +107,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 
 ## 4. Request Flow
 
-Example: `POST /api/v1/books` (create a book). All `@RestController`s get the `/api/v1` prefix from `WebConfig`.
+Example: `POST /api/v1/books` (create a book). `WebConfig` adds the `/api/v1` prefix to the project's own `@RestController`s; springdoc's endpoints are excluded by package and stay at the root.
 
 The security, `@Valid`, current-user and transaction steps are part of the target design and not implemented yet.
 
@@ -145,7 +145,7 @@ sequenceDiagram
 
 Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>` (e.g. `core.book`, `adapter.web.book`). The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
 
-Within a feature package, the code is grouped further into sub-packages: `models` and `usecases` in `core` (e.g. `core.book.models`, `core.book.usecases`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`). Cross-feature code lives in `shared` (core) or `common` (adapters).
+Within a feature package, the code is grouped further into sub-packages: `models` and `usecases` in `core` (e.g. `core.book.models`, `core.book.usecases`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`). Cross-feature code lives in `shared` (core) or `common` (adapters), grouped by concern (`config`, `exception`).
 
 Files marked *(planned)* don't exist yet.
 
@@ -170,9 +170,13 @@ backend/
 │        └─ GetBooksUseCase.kt
 ├─ adapter/web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
 │  ├─ common/
-│  │  ├─ GlobalExceptionHandler.kt            # → ProblemDetail
-│  │  ├─ WebConfig.kt                         # /api/v1 prefix for all @RestControllers
-│  │  └─ OpenApiConfig.kt                     # (planned)
+│  │  ├─ config/
+│  │  │  ├─ WebConfig.kt                      # /api/v1 prefix for own @RestControllers
+│  │  │  └─ OpenApiConfig.kt                  # OpenAPI title and version
+│  │  └─ exception/
+│  │     ├─ GlobalExceptionHandler.kt         # expected errors → ProblemDetail
+│  │     ├─ FallbackExceptionHandler.kt       # anything unhandled → 500, logged
+│  │     └─ ValidationError.kt                # field, code, message per failed field
 │  └─ book/
 │     ├─ BookController.kt
 │     ├─ BookWebMapper.kt
@@ -247,9 +251,9 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 - Keycloak client `booktracker-app`: public client, standard flow + PKCE (S256), redirect URI via app scheme.
 
 ### Validation & Error Handling
-- Bean Validation on request DTOs (`@field:NotBlank`, `@field:Size`, …) and `@Valid` in the controller (planned).
+- Bean Validation on request DTOs (`@field:NotBlank`, `@field:Positive`, …) and `@Valid` in the controller. Failed fields are returned in an `errors` list (`field`, `code`, `message`); clients branch on `code`, since `message` is localized by Hibernate Validator. The server locale is fixed to `en` so messages don't depend on the machine.
 - Business invariants are checked by the domain model itself (e.g. `require(...)` in the `init` block of `Book`, `Isbn.of(...)`). For now, the resulting `IllegalArgumentException` is mapped to 400; domain-specific exceptions are to replace this.
-- A global `@RestControllerAdvice` translates errors consistently into **ProblemDetail (RFC 9457)**:
+- Two `@RestControllerAdvice`s translate errors consistently into **ProblemDetail (RFC 9457)**: `GlobalExceptionHandler` with the highest precedence (ahead of Spring Boot's own `ProblemDetailsExceptionHandler`, which is registered with `@Order(0)`), and `FallbackExceptionHandler` with the lowest, so a catch-all doesn't shadow the more specific handlers.
 
 | Error | HTTP status |
 |---|---|
@@ -401,6 +405,6 @@ Detailed implementation plan with checklists: `docs/roadmap.md` (local only, not
 
 1. ✅ Implement the skeleton: create the modules `core`, `:adapter:web`, `:adapter:persistence`, `bootstrap`; move the existing `src/` into `bootstrap`
 2. Add `compose.yaml` (✅ Postgres) and the Keycloak realm export
-3. Basic configuration for security, error handling (✅ basic `GlobalExceptionHandler`) and OpenAPI
+3. Basic configuration for security, error handling (✅ validation and ProblemDetail) and OpenAPI (✅ springdoc)
 4. First feature `book` as reference implementation through all layers (✅ create, get one, get all; without auth and transactions)
 5. Optional: architecture tests (e.g. Konsist) for rules within a module
