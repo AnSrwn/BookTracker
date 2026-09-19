@@ -49,64 +49,61 @@ flowchart LR
 
 ## 3. Module Structure
 
-The backend follows a **hexagonal architecture (ports & adapters)**. Each layer is its own Gradle module; within the modules, code is split **by feature** (`book`, `shelf`, …).
+The backend follows a **hexagonal architecture (ports & adapters)** with a **pure Kotlin core**. Each part is its own Gradle module; within the modules, code is split **by feature** (`book`, `shelf`, …).
 
 ```mermaid
 flowchart TB
     subgraph boot["bootstrap"]
-        bootApp["BookTrackerApplication<br/>application.yaml<br/>Integration tests"]
+        bootApp["BookTrackerApplication<br/>UseCaseConfig (@Bean wiring)<br/>application.yaml<br/>Integration tests"]
     end
 
-    subgraph adapters["Adapters"]
-        web["adapter-web<br/>REST controllers, DTOs,<br/>validation, OpenAPI, error handling"]
-        persistence["adapter-persistence<br/>Spring Data JDBC,<br/>Flyway, mappers"]
-        security["security<br/>Resource server,<br/>Keycloak roles, CurrentUser"]
+    subgraph adapters["Adapters (Spring)"]
+        web["adapter:web<br/>REST controllers, DTOs,<br/>validation, OpenAPI, error handling"]
+        persistence["adapter:persistence<br/>Spring Data JDBC, Flyway,<br/>mappers, SpringTransactionRunner"]
+        security["adapter:security<br/>Resource server, Keycloak roles,<br/>JwtCurrentUserProvider"]
     end
 
-    subgraph core["Core"]
-        application["application<br/>Use cases / services<br/>@Transactional<br/>Port: CurrentUserProvider"]
-        domain["domain<br/>Entities, value objects,<br/>domain exceptions<br/>Ports: e.g. BookRepository"]
+    subgraph coreLayer["Core (pure Kotlin)"]
+        core["core<br/>Models, value objects, exceptions<br/>Use cases<br/>Ports: BookRepository,<br/>CurrentUserProvider, TransactionRunner"]
     end
 
     bootApp --> web
     bootApp --> persistence
     bootApp --> security
-    bootApp --> application
-    bootApp --> domain
+    bootApp --> core
 
-    web --> application
-    web --> domain
-    persistence --> application
-    persistence --> domain
-    security --> application
-    application --> domain
+    web --> core
+    persistence --> core
+    security --> core
 
-    persistence -. "implements<br/>BookRepository" .-> domain
-    security -. "implements<br/>CurrentUserProvider" .-> application
+    persistence -. "implements<br/>BookRepository, TransactionRunner" .-> core
+    security -. "implements<br/>CurrentUserProvider" .-> core
 ```
 
-Solid arrows are Gradle dependencies; dashed arrows show which adapter implements which port. All dependencies point **inwards**: the core knows no adapter.
+Solid arrows are Gradle dependencies; dashed arrows show which adapter implements which port. All dependencies point **inwards**: the core knows no adapter, and adapters don't know each other.
 
 ### 3.1 Modules at a Glance
 
 | Module | Responsibility | May depend on | Key dependencies |
 |---|---|---|---|
-| `domain` | Domain model, business rules, outbound ports, domain exceptions | – | Kotlin stdlib only (**no Spring**) |
-| `application` | Orchestrate use cases, transaction boundaries, cross-cutting ports | `domain` | `spring-context`, `spring-tx` |
-| `adapter-web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `application`, `domain` | `starter-webmvc`, `starter-validation`, `springdoc-openapi-starter-webmvc-ui`, `jackson-module-kotlin` |
-| `adapter-persistence` | Implementation of the repository ports, DB entities, migrations | `application`, `domain` | `starter-data-jdbc`, `flyway-core`, `flyway-database-postgresql`, `postgresql` (runtime) |
-| `security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` | `application` | `starter-oauth2-resource-server` |
-| `bootstrap` | Assembly: main class, configuration, end-to-end tests | all | `starter-actuator`, `spring-boot-docker-compose`, Testcontainers |
+| `core` | Domain models, business rules, use cases, all ports (repositories, `CurrentUserProvider`, `TransactionRunner`), domain exceptions | – | Kotlin stdlib only (**no Spring**) |
+| `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `starter-validation`, `springdoc-openapi-starter-webmvc-ui`, `jackson-module-kotlin` |
+| `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `flyway-core`, `flyway-database-postgresql`, `postgresql` (runtime) |
+| `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` (added with auth) | `core` | `starter-oauth2-resource-server` |
+| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `starter-actuator`, `spring-boot-docker-compose`, Testcontainers |
 
 ### 3.2 Architecture Rules
 
-1. **Only `implementation(project(...))`, never `api(...)`.** Dependencies do not leak transitively, e.g. `adapter-web` cannot import persistence classes. Violations are **compile errors**.
-2. **`domain` is framework-free.** No Spring, JDBC or Jackson annotations in the domain model.
-3. **Ports live inside, implementations outside.** Repository interfaces in `domain`, technical cross-cutting ports (e.g. `CurrentUserProvider`) in `application`.
+1. **Only `implementation(project(...))`, never `api(...)`.** Dependencies do not leak transitively, e.g. `:adapter:web` cannot import persistence classes. Violations are **compile errors**.
+2. **`core` is framework-free.** No Spring, JDBC or Jackson in `core`, not even annotations. Enforced by the build: `core` has no Spring on its classpath.
+3. **Ports live in `core`, implementations in the adapters.** This covers repositories as well as technical ports like `CurrentUserProvider` and `TransactionRunner`.
 4. **Separate models per layer.** Web DTOs ↔ domain model ↔ persistence entity are translated via mappers (Kotlin extension functions). This keeps the API contract, domain model and DB schema independently changeable.
-5. **Pragmatism for inbound ports.** Controllers call application services directly. Dedicated use-case interfaces are only introduced once there are multiple callers or implementations.
-6. **Transactions only in `application`.** `@Transactional` belongs on use-case methods, not on controllers or repositories.
-7. **No security knowledge in the web adapter.** The current user is provided by the `CurrentUserProvider` port, not by `@AuthenticationPrincipal`.
+5. **One class per use case, no interface in front.** E.g. `AddBookUseCase`, `UpdateProgressUseCase`. Tests fake the ports, not the use cases. An interface is only introduced once there are multiple implementations.
+6. **Controllers only talk to use cases**, never directly to ports. Every use case enforces ownership (the current user may only see and change their own data), so this check cannot be skipped.
+7. **Transactions via the `TransactionRunner` port.** Use cases wrap their work in `tx.run { … }`; the implementation in `:adapter:persistence` uses Spring's `TransactionTemplate`. No `@Transactional` in `core` or on controllers.
+8. **Use cases are wired in `bootstrap`.** `UseCaseConfig` registers each use case as a `@Bean`. Adapters use regular Spring stereotypes (`@RestController`, `@Component`, …).
+9. **Logic starts in the use case.** A rule moves into the domain model once it is clearly a business rule (e.g. "progress must not exceed the page count"). Models may stay plain `data class`es until then.
+10. **No security knowledge in the web adapter.** The current user is provided by the `CurrentUserProvider` port, not by `@AuthenticationPrincipal`.
 
 ## 4. Request Flow
 
@@ -116,84 +113,103 @@ Example: `POST /api/books` (create a book)
 sequenceDiagram
     autonumber
     participant App as Mobile App
-    participant Sec as security<br/>SecurityFilterChain
-    participant Ctrl as adapter-web<br/>BookController
-    participant Svc as application<br/>BookService
-    participant Port as domain<br/>BookRepository port
-    participant Jdbc as adapter-persistence<br/>BookJdbcAdapter
+    participant Sec as adapter:security<br/>SecurityFilterChain
+    participant Ctrl as adapter:web<br/>BookController
+    participant UC as core<br/>AddBookUseCase
+    participant Tx as adapter:persistence<br/>SpringTransactionRunner
+    participant Jdbc as adapter:persistence<br/>BookJdbcAdapter
     participant DB as PostgreSQL
 
     App->>Sec: POST /api/books + Bearer JWT
     Sec->>Sec: Validate JWT (signature via JWKS, issuer, expiry)
     Sec->>Ctrl: Authenticated request
     Ctrl->>Ctrl: Validate CreateBookRequest (@Valid)
-    Ctrl->>Svc: createBook(command)
-    Note over Ctrl,Svc: DTO → domain command
-    Svc->>Svc: currentUser() via CurrentUserProvider
-    Svc->>Port: save(book)
-    Port->>Jdbc: Implementation
+    Ctrl->>UC: execute(command)
+    Note over Ctrl,UC: DTO → domain command
+    UC->>UC: currentUser via CurrentUserProvider port
+    UC->>Tx: TransactionRunner.run { … }
+    Tx->>DB: BEGIN
+    UC->>Jdbc: save(book) via BookRepository port
     Jdbc->>DB: INSERT (Spring Data JDBC)
     DB-->>Jdbc: Row
-    Jdbc-->>Svc: Book (entity → domain)
-    Svc-->>Ctrl: Book
+    Jdbc-->>UC: Book (entity → domain)
+    Tx->>DB: COMMIT (ROLLBACK on exception)
+    UC-->>Ctrl: Book
     Ctrl-->>App: 201 Created + BookResponse
     Note over Ctrl,App: Domain → DTO, errors as ProblemDetail
 ```
 
 ## 5. Package Convention & Example Feature
 
-Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>`. The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
+Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>` (e.g. `core.book`, `adapter.web.book`). The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
 
 ```
 backend/
 ├─ build-logic/                               # Convention plugins
 ├─ gradle/libs.versions.toml                  # Central versions
-├─ domain/src/main/kotlin/com/sauerwein/booktracker/domain/
-│  ├─ common/NotFoundException.kt
+├─ core/src/main/kotlin/com/sauerwein/booktracker/core/
+│  ├─ shared/
+│  │  ├─ CurrentUserProvider.kt               # Port
+│  │  ├─ TransactionRunner.kt                 # Port
+│  │  ├─ UserId.kt                            # Value object (Keycloak sub)
+│  │  └─ NotFoundException.kt
 │  └─ book/
 │     ├─ Book.kt                              # Domain model (data class)
 │     ├─ BookId.kt                            # Value object
-│     └─ BookRepository.kt                    # Outbound port (interface)
-├─ application/src/main/kotlin/com/sauerwein/booktracker/application/
-│  ├─ common/CurrentUserProvider.kt           # Port
-│  └─ book/
-│     ├─ BookService.kt                       # Use cases, @Transactional
-│     └─ CreateBookCommand.kt
-├─ adapter-web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
+│     ├─ BookRepository.kt                    # Outbound port (interface)
+│     ├─ AddBookUseCase.kt                    # Use case + AddBookCommand
+│     └─ GetMyBooksUseCase.kt
+├─ adapter/web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
 │  ├─ common/GlobalExceptionHandler.kt        # → ProblemDetail
 │  ├─ common/OpenApiConfig.kt
 │  └─ book/
 │     ├─ BookController.kt
 │     ├─ BookDtos.kt                          # CreateBookRequest, BookResponse
 │     └─ BookWebMapper.kt
-├─ adapter-persistence/src/main/
-│  ├─ kotlin/com/sauerwein/booktracker/adapter/persistence/book/
-│  │  ├─ BookEntity.kt                        # @Table data class
-│  │  ├─ BookJdbcRepository.kt                # Spring Data CrudRepository
-│  │  ├─ BookJdbcAdapter.kt                   # implements domain.BookRepository
-│  │  └─ BookPersistenceMapper.kt
+├─ adapter/persistence/src/main/
+│  ├─ kotlin/com/sauerwein/booktracker/adapter/persistence/
+│  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner
+│  │  └─ book/
+│  │     ├─ BookEntity.kt                     # @Table data class
+│  │     ├─ BookJdbcRepository.kt             # Spring Data CrudRepository
+│  │     ├─ BookJdbcAdapter.kt                # implements core BookRepository
+│  │     └─ BookPersistenceMapper.kt
 │  └─ resources/db/migration/V1__init.sql
-├─ security/src/main/kotlin/com/sauerwein/booktracker/security/
+├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/
 │  ├─ SecurityConfig.kt                       # SecurityFilterChain
 │  ├─ KeycloakRoleConverter.kt                # realm_access.roles → ROLE_*
 │  └─ JwtCurrentUserProvider.kt
 ├─ bootstrap/src/
-│  ├─ main/kotlin/com/sauerwein/booktracker/BookTrackerApplication.kt
+│  ├─ main/kotlin/com/sauerwein/booktracker/
+│  │  ├─ BookTrackerApplication.kt
+│  │  └─ config/UseCaseConfig.kt              # @Bean per use case
 │  ├─ main/resources/application.yaml
 │  └─ test/kotlin/...                         # Integration tests (Testcontainers)
 ├─ compose.yaml                               # Postgres + Keycloak
 └─ keycloak/realm-booktracker.json            # Realm import for local development
 ```
 
+Wiring a use case in `bootstrap`:
+
+```kotlin
+@Configuration
+class UseCaseConfig {
+    @Bean
+    fun addBookUseCase(books: BookRepository, currentUser: CurrentUserProvider, tx: TransactionRunner) =
+        AddBookUseCase(books, currentUser, tx)
+}
+```
+
 ## 6. Build Setup
 
-- `settings.gradle.kts` includes `build-logic` via `includeBuild` and registers all modules.
+- `settings.gradle.kts` includes `build-logic` via `includeBuild` and registers all modules. Adapters are nested under `adapter/` (`include("adapter:web")` → project `:adapter:web` in `adapter/web/`); the parent `:adapter` is an empty grouping project without a build script. The foojay resolver provisions the Java toolchain automatically.
+- `gradle.properties` holds `group`/`version` for all projects and enables parallel builds, the build cache and the configuration cache.
 - Convention plugins in `build-logic` keep the module build scripts short:
 
 | Plugin | Contents | Used by |
 |---|---|---|
-| `booktracker.kotlin-library` | Kotlin JVM, Java toolchain from the catalog, compiler args (`-Xjsr305=strict`, `-Xannotation-default-target=param-property`), JUnit Platform | `domain` |
-| `booktracker.spring-library` | + `kotlin-spring`, Spring Boot BOM as `platform(...)` | `application`, adapters, `security` |
+| `booktracker.kotlin-library` | Kotlin JVM, Java toolchain from the catalog, compiler args (`-Xjsr305=strict`, `-Xannotation-default-target=param-property`), Kotlin BOM, JUnit Platform | `core` |
+| `booktracker.spring-library` | + `kotlin-spring`, Spring Boot BOM as `platform(...)`, `kotlin-reflect` | adapters |
 | `booktracker.spring-boot-app` | + Spring Boot plugin (executable jar, `bootRun`) | `bootstrap` |
 
 - Versions live exclusively in `gradle/libs.versions.toml`. The Spring Boot BOM is included as a Gradle platform; the `io.spring.dependency-management` plugin is dropped.
@@ -224,7 +240,7 @@ backend/
 - The OpenAPI spec can serve as the basis for client generation in the mobile app.
 
 ### Database & Migrations
-- The schema is managed **exclusively via Flyway** (`adapter-persistence/src/main/resources/db/migration`), no automatic schema generation.
+- The schema is managed **exclusively via Flyway** (`adapter/persistence/src/main/resources/db/migration`), no automatic schema generation.
 - Naming scheme: `V<n>__<description>.sql`. Migrations that have already been applied are never modified.
 - User ownership via an `owner_id` column (Keycloak `sub`, UUID), no user table with passwords.
 
@@ -237,9 +253,9 @@ backend/
 
 | Level | Module | Tools |
 |---|---|---|
-| Unit tests for business logic | `domain`, `application` | JUnit 5, kotlin-test, fakes for ports |
-| Web slice | `adapter-web` | `@WebMvcTest`, mocked services |
-| Persistence slice | `adapter-persistence` | `@DataJdbcTest` + Testcontainers Postgres |
+| Unit tests for use cases and domain rules | `core` | JUnit 5, kotlin-test, fakes for ports (incl. a `TransactionRunner` that just runs the block), no Spring |
+| Web slice | `:adapter:web` | `@WebMvcTest`, mocked use cases |
+| Persistence slice | `:adapter:persistence` | `@DataJdbcTest` + Testcontainers Postgres |
 | End-to-end | `bootstrap` | `@SpringBootTest` + Testcontainers (Postgres, Keycloak) |
 
 ## 8. Architecture Decision Records (ADRs)
@@ -247,9 +263,9 @@ backend/
 ### ADR-001: Hexagonal architecture with Gradle modules
 
 - **Context:** Package conventions alone tend to erode over time. Boundaries should be enforced technically.
-- **Decision:** Ports & adapters, one layer per Gradle module, packages per feature within the modules.
+- **Decision:** Ports & adapters: a pure core plus one Gradle module per adapter, packages per feature within the modules. The shape of the core is refined in ADR-005.
 - **Consequences:**
-  - ➕ Boundary violations are compile errors; `domain` stays testable without Spring.
+  - ➕ Boundary violations are compile errors; `core` stays testable without Spring.
   - ➕ Technologies (DB, auth) are replaceable within their adapter.
   - ➖ More mapping code (DTO ↔ domain ↔ entity) and more build configuration.
   - ➖ A single feature is spread across several modules.
@@ -272,7 +288,7 @@ backend/
 - **Consequences:**
   - ➕ Immutable Kotlin `data class`es, no lazy-loading or session issues, very little code for CRUD.
   - ➖ Aggregate model: references between aggregates by ID only. Complex queries as SQL strings.
-  - ↪ If things become query-heavy, `adapter-persistence` can be switched to jOOQ partially or entirely without touching `domain` or `application`.
+  - ↪ If things become query-heavy, `:adapter:persistence` can be switched to jOOQ partially or entirely without touching `core`.
 
 ### ADR-003: Keycloak as identity provider
 
@@ -287,7 +303,7 @@ backend/
 | MFA, passkeys, social login, admin UI | build yourself | build yourself | included |
 | Operations | nothing extra | embedded in the backend | separate service (~0.5–1 GB RAM, own DB) |
 | User data | own DB | own DB | in Keycloak, referenced via `sub` |
-| Modules in the backend | `security` + login endpoints | `auth-server` + `security` | `security` only |
+| Modules in the backend | `:adapter:security` + login endpoints | `auth-server` + `:adapter:security` | `:adapter:security` only |
 
 - **Consequences:**
   - ➕ Standards-compliant OIDC flow, comprehensive user management without custom code, lean backend.
@@ -307,7 +323,7 @@ backend/
 **Future direction (once users can upload images):**
 
 - **Storage:** S3-compatible object storage (e.g. AWS S3, Cloudflare R2, Hetzner Object Storage; locally an S3 emulator container). Never in Postgres (`bytea`) or on the local file system. The database only holds metadata: key, content type, size, owner.
-- **Architecture:** port `ImageStorage` in `application`, new module `adapter-storage` (S3 client).
+- **Architecture:** port `ImageStorage` in `core`, new module `:adapter:storage` (S3 client).
 - **Upload:**
 
 | | Multipart via backend (start here) | Presigned URL (direct to storage) |
@@ -327,6 +343,25 @@ backend/
   - Delete images when a book is removed and when an account is deleted (GDPR)
   - Upload quota per user to prevent abuse
 
+### ADR-005: Pure Kotlin core containing the use cases
+
+- **Context:** The first draft split the core into `domain` (entities, ports, no Spring) and `application` (use cases with `@Service`/`@Transactional`). For a CRUD-heavy app, `domain` would have stayed nearly empty, while the logic worth testing (ownership, scan flow, shelf rules) would have lived in a module with Spring on its classpath.
+- **Decision:** One module `core` holds domain models, ports **and** use cases, in pure Kotlin. Use cases are plain classes wired as `@Bean`s in `bootstrap`. Transactions go through a `TransactionRunner` port implemented with `TransactionTemplate` in `:adapter:persistence`.
+
+| | Single module, feature packages | `domain` + `application` (Spring) | Pure `core` ✅ |
+|---|---|---|---|
+| Boundaries enforced by | code review only | build | build |
+| Where the testable logic lives | mixed with Spring code | module with Spring | Spring-free module |
+| Nearly empty module | – | `domain` | – |
+| Extra wiring | none | none | one `@Bean` per use case, `TransactionRunner` port |
+
+- **Consequences:**
+  - ➕ Use cases and rules are unit-tested in milliseconds with fakes, without Spring context or database.
+  - ➕ The whole core is framework-free, enforced by the compiler; no proxy pitfalls (self-invocation, `open` classes) in the core.
+  - ➖ One `@Bean` method per use case and an explicit `tx.run { … }` instead of an annotation.
+  - ➖ Still more structure than a pure CRUD app strictly needs (mapping code between layers).
+  - ↪ If a rich domain emerges later, `core` can be split into `domain` and `application` again.
+
 ## 9. Local Development
 
 | Service | Port | Purpose |
@@ -341,7 +376,7 @@ backend/
 
 Detailed implementation plan with checklists: `docs/roadmap.md` (local only, not versioned)
 
-1. Implement the skeleton: `build-logic`, create modules, move the existing `src/` into `bootstrap`
+1. Implement the skeleton: create the modules `core`, `:adapter:web`, `:adapter:persistence`, `bootstrap`; move the existing `src/` into `bootstrap`
 2. Add `compose.yaml` and the Keycloak realm export
 3. Basic configuration for security, error handling and OpenAPI
 4. First feature `book` as reference implementation through all layers
