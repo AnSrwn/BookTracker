@@ -60,7 +60,7 @@ flowchart TB
     subgraph adapters["Adapters (Spring)"]
         web["adapter:web<br/>REST controllers, DTOs,<br/>validation, OpenAPI, error handling"]
         persistence["adapter:persistence<br/>Spring Data JDBC, Flyway,<br/>mappers, SpringTransactionRunner"]
-        security["adapter:security (planned)<br/>Resource server, Keycloak roles,<br/>JwtCurrentUserProvider"]
+        security["adapter:security<br/>Resource server, Keycloak roles,<br/>JwtCurrentUserProvider"]
     end
 
     subgraph coreLayer["Core (pure Kotlin)"]
@@ -89,7 +89,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 | `core` | Domain models, business rules, use cases, all ports (repositories, `CurrentUserProvider`, `TransactionRunner`), domain exceptions | – | Kotlin stdlib only (**no Spring**) |
 | `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `jackson-module-kotlin` (Jackson 3), `starter-validation`, `springdoc-openapi-starter-webmvc-ui` |
 | `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `starter-flyway`, `flyway-database-postgresql`, `postgresql` (runtime) |
-| `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` (planned, added with auth) | `core` | `starter-oauth2-resource-server` |
+| `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` | `core` | `starter-security-oauth2-resource-server` |
 | `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `spring-boot-docker-compose` (dev only), Testcontainers; planned: `starter-actuator` |
 
 ### 3.2 Architecture Rules
@@ -109,7 +109,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 
 Example: `POST /api/v1/books` (create a book). `WebConfig` adds the `/api/v1` prefix to the project's own `@RestController`s; springdoc's endpoints are excluded by package and stay at the root.
 
-The security, `@Valid`, current-user and transaction steps are part of the target design and not implemented yet.
+The transaction step is part of the target design and not implemented yet.
 
 ```mermaid
 sequenceDiagram
@@ -155,10 +155,11 @@ backend/
 ├─ gradle/libs.versions.toml                  # Central versions
 ├─ core/src/main/kotlin/com/sauerwein/booktracker/core/
 │  ├─ shared/
-│  │  ├─ CurrentUserProvider.kt               # Port (planned)
 │  │  ├─ TransactionRunner.kt                 # Port (planned)
-│  │  ├─ UserId.kt                            # Value object, Keycloak sub (planned)
-│  │  └─ exception/NotFoundException.kt
+│  │  └─ exception/                           # NotFoundException, ValidationException, ConflictException
+│  ├─ user/
+│  │  ├─ CurrentUserProvider.kt               # Port, current user of the request
+│  │  └─ UserId.kt                            # Value object, Keycloak sub
 │  └─ book/
 │     ├─ BookRepository.kt                    # Outbound port (interface)
 │     ├─ models/
@@ -188,13 +189,14 @@ backend/
 │  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner (planned)
 │  │  └─ book/
 │  │     ├─ BookEntity.kt                     # @Table data class
-│  │     ├─ BookDao.kt                        # Spring Data ListCrudRepository
+│  │     ├─ BookQueries.kt                    # Spring Data Repository, visibility-scoped reads
 │  │     ├─ JdbcBookRepository.kt             # implements core BookRepository
 │  │     └─ BookPersistenceMapper.kt
 │  └─ resources/db/migration/
 │     ├─ V1__init.sql
-│     └─ V2__book.sql
-├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/   # (planned)
+│     ├─ V2__book.sql
+│     └─ V3__book_owner.sql
+├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/
 │  ├─ SecurityConfig.kt                       # SecurityFilterChain
 │  ├─ KeycloakRoleConverter.kt                # realm_access.roles → ROLE_*
 │  └─ JwtCurrentUserProvider.kt
@@ -204,9 +206,9 @@ backend/
 │  │  └─ config/UseCaseConfig.kt              # @Bean per use case, Clock bean
 │  ├─ main/resources/application.yaml
 │  └─ test/kotlin/...                         # Integration tests (Testcontainers)
-├─ compose.yaml                               # Local dev: Postgres (Keycloak planned)
-├─ compose.prod.yaml                          # Production: app + Postgres
-└─ keycloak/realm-booktracker.json            # Realm import for local development (planned)
+├─ compose.yaml                               # Local dev: Postgres + Keycloak
+├─ compose.prod.yaml                          # Production: app + Postgres (Keycloak runs separately)
+└─ keycloak/realm-booktracker.json            # Realm import for local development
 ```
 
 Wiring a use case in `bootstrap`:
@@ -245,14 +247,15 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 
 ### Security
 - Stateless, no session, CSRF disabled (pure token API).
-- Public: `/actuator/health`, `/v3/api-docs/**`, `/swagger-ui/**`. Everything else requires a valid JWT.
-- `issuer-uri`: `http://localhost:8180/realms/booktracker` (local). JWKS keys are loaded and cached automatically.
+- Public: `/v3/api-docs/**`, `/swagger-ui/**`. Everything else requires a valid JWT. `/actuator/**` follows once Actuator is on the classpath.
+- `issuer-uri`: `http://localhost:8180/realms/booktracker` (local), overridable via `BOOKTRACKER_ISSUER_URI`. JWKS keys are loaded lazily on the first token and cached.
+- The issuer URL must be a **stable DNS name** per environment. It is part of every token (`iss`), of the client's redirect URIs and of the Swagger UI configuration, so changing it later invalidates all issued tokens.
 - Roles: Keycloak claim `realm_access.roles` → Spring authorities `ROLE_<name>`.
 - Keycloak client `booktracker-app`: public client, standard flow + PKCE (S256), redirect URI via app scheme.
 
 ### Validation & Error Handling
 - Bean Validation on request DTOs (`@field:NotBlank`, `@field:Positive`, …) and `@Valid` in the controller. Failed fields are returned in an `errors` list (`field`, `code`, `message`); clients branch on `code`, since `message` is localized by Hibernate Validator. The server locale is fixed to `en` so messages don't depend on the machine.
-- Business invariants are checked by the domain model itself (e.g. `require(...)` in the `init` block of `Book`, `Isbn.of(...)`). For now, the resulting `IllegalArgumentException` is mapped to 400; domain-specific exceptions are to replace this.
+- Business invariants are checked by the domain model itself. Invalid input throws `ValidationException` (`field`, `code`) and becomes a 400 in the same shape as a Bean Validation error; `require(...)` stays for real invariants, whose violation is a bug and ends as a 500.
 - Two `@RestControllerAdvice`s translate errors consistently into **ProblemDetail (RFC 9457)**: `GlobalExceptionHandler` with the highest precedence (ahead of Spring Boot's own `ProblemDetailsExceptionHandler`, which is registered with `@Order(0)`), and `FallbackExceptionHandler` with the lowest, so a catch-all doesn't shadow the more specific handlers.
 
 | Error | HTTP status |
@@ -269,7 +272,8 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 ### Database & Migrations
 - The schema is managed **exclusively via Flyway** (`adapter/persistence/src/main/resources/db/migration`), no automatic schema generation.
 - Naming scheme: `V<n>__<description>.sql`. Migrations that have already been applied are never modified.
-- User ownership via a nullable `owner_id` column (Keycloak `sub`, UUID): set means private to that user, `NULL` means a public catalog entry. No user table with passwords (planned; `V2__book.sql` has no `owner_id` yet).
+- User ownership via a nullable `owner_id` column (Keycloak `sub`, UUID, added in `V3__book_owner.sql`): set means private to that user, `NULL` means a public catalog entry. No user table, and no foreign key.
+- Because of that missing foreign key, Keycloak's user store is as critical as this database: if a realm is recreated, every `sub` changes and every row is orphaned. A production Keycloak therefore needs its own persistent database and backups.
 
 ### Images
 - MVP: only book covers from the external book API. The backend stores just the `cover_url` on the book. The app loads the image directly from the external source; the backend neither stores nor serves image files.
@@ -412,9 +416,9 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 
 | Service | Port | Purpose |
 |---|---|---|
-| Backend | 8080 | REST API under `/api/v1`, Swagger UI at `/swagger-ui.html` (planned) |
+| Backend | 8080 | REST API under `/api/v1`, Swagger UI at `/swagger-ui.html` |
 | PostgreSQL | 5432 | App database |
-| Keycloak | 8180 | IdP, admin console, realm `booktracker` (imported from `keycloak/realm-booktracker.json`) (planned) |
+| Keycloak | 8180 | IdP, admin console, realm `booktracker` (imported from `keycloak/realm-booktracker.json`) |
 
 `./gradlew :bootstrap:bootRun` automatically starts the services from `compose.yaml` via `spring-boot-docker-compose`.
 
