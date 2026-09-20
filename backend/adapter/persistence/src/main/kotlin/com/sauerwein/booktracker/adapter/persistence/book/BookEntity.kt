@@ -8,6 +8,7 @@ import java.util.*
 @Table("book")
 data class BookEntity(
     @Id val id: UUID,
+    val ownerId: UUID?,
     val title: String,
     val author: String,
     val publisher: String?,

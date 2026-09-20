@@ -99,7 +99,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 3. **Ports live in `core`, implementations in the adapters.** This covers repositories as well as technical ports like `CurrentUserProvider` and `TransactionRunner`.
 4. **Separate models per layer.** Web DTOs ↔ domain model ↔ persistence entity are translated via mappers (Kotlin extension functions). This keeps the API contract, domain model and DB schema independently changeable.
 5. **One class per use case, no interface in front.** E.g. `AddBookUseCase`, `UpdateProgressUseCase`. Tests fake the ports, not the use cases. An interface is only introduced once there are multiple implementations.
-6. **Controllers only talk to use cases**, never directly to ports. Every use case enforces ownership (the current user may only see and change their own data), so this check cannot be skipped.
+6. **Controllers only talk to use cases**, never directly to ports. Every use case enforces visibility itself, so the check cannot be skipped: a user may change only their own rows, and may read their own plus the public ones (`owner_id IS NULL`).
 7. **Transactions via the `TransactionRunner` port.** Use cases wrap their work in `tx.run { … }`; the implementation in `:adapter:persistence` uses Spring's `TransactionTemplate`. No `@Transactional` in `core` or on controllers.
 8. **Use cases are wired in `bootstrap`.** `UseCaseConfig` registers each use case as a `@Bean`. Adapters use regular Spring stereotypes (`@RestController`, `@Component`, …).
 9. **Logic starts in the use case.** A rule moves into the domain model once it is clearly a business rule (e.g. "progress must not exceed the page count"). Models may stay plain `data class`es until then.
@@ -269,7 +269,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 ### Database & Migrations
 - The schema is managed **exclusively via Flyway** (`adapter/persistence/src/main/resources/db/migration`), no automatic schema generation.
 - Naming scheme: `V<n>__<description>.sql`. Migrations that have already been applied are never modified.
-- User ownership via an `owner_id` column (Keycloak `sub`, UUID), no user table with passwords (planned, added with auth; `V2__book.sql` has no `owner_id` yet).
+- User ownership via a nullable `owner_id` column (Keycloak `sub`, UUID): set means private to that user, `NULL` means a public catalog entry. No user table with passwords (planned; `V2__book.sql` has no `owner_id` yet).
 
 ### Images
 - MVP: only book covers from the external book API. The backend stores just the `cover_url` on the book. The app loads the image directly from the external source; the backend neither stores nor serves image files.
@@ -388,6 +388,25 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
   - ➖ One `@Bean` method per use case and an explicit `tx.run { … }` instead of an annotation.
   - ➖ Still more structure than a pure CRUD app strictly needs (mapping code between layers).
   - ↪ If a rich domain emerges later, `core` can be split into `domain` and `application` again.
+
+### ADR-006: Public catalog and private books in one table
+
+- **Context:** `book` currently conflates two things: objective facts about a book (title, author, ISBN, cover) and a user's personal relationship to it. The target is a centrally maintained catalog — curated by an admin or imported from public book databases — that every user can see, plus books a user creates when the catalog does not have them, visible only to their creator.
+- **Decision:** One `book` table with a **nullable** `owner_id`: `NULL` is a public catalog entry, a set value makes the row private to that user. The visibility rule `owner_id IS NULL OR owner_id = :me` lives behind the `BookRepository` port: no read method may return another user's private row, so every one of them is either scoped to the caller or restricted to `owner_id IS NULL`. An unscoped `findAll()` does not exist. Catalog rows have no owner and must not be given the curating admin's `sub`. A user's relationship to a book (reading status, possession, favourite) is a separate per-user row referencing the book, with independent axes instead of one `status` field, because owning, having read and favouring a book are not mutually exclusive.
+
+| | One `book`, nullable `owner_id` ✅ | `book` + `custom_book` |
+|---|---|---|
+| Foreign key from the per-user row | one column | polymorphic: two nullable columns plus `CHECK` |
+| Reading catalog and private books | one query | merge two sources |
+| Publishing a private book | `UPDATE … SET owner_id = NULL` | copy row, rewrite references |
+| Visibility enforced by | the port | `NOT NULL` in the schema |
+
+- **Consequences:**
+  - ➕ One id space and one mapper; the per-user row needs no polymorphic foreign key.
+  - ➕ A private book can become a catalog entry without touching anything that references it.
+  - ➖ Visibility is guaranteed by the port, not by the schema — an unscoped read method would silently leak private books, so none may exist.
+  - ➖ "The same ISBN only once" becomes two partial unique indexes, one for `owner_id IS NULL` (per ISBN) and one for `owner_id IS NOT NULL` (per owner and ISBN), both restricted to `isbn IS NOT NULL`. A plain `UNIQUE (owner_id, isbn)` misses duplicate public entries, and `NULLS NOT DISTINCT` would additionally allow a user only a single book without an ISBN.
+  - ↪ Should private books ever need their own fields, they can move into a separate table later; only the per-user row's foreign key has to follow.
 
 ## 9. Local Development
 

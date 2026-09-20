@@ -7,3 +7,8 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+
+# TODO
+booktracker:
+  # Stands in for the Keycloak sub until auth arrives. Change it and restart to act as another user.
+  dev-user-id: 00000000-0000-0000-0000-000000000001

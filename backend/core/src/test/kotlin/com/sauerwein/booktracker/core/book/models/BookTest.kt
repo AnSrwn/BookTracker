@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.core.book.models
 
 import com.sauerwein.booktracker.core.shared.exception.ValidationException
+import com.sauerwein.booktracker.core.user.UserId
 import java.time.Instant
 import java.util.*
 import kotlin.test.Test
@@ -12,6 +13,7 @@ class BookTest {
 
     private fun book(coverUrl: String?) = Book(
         id = BookId(UUID.randomUUID()),
+        ownerId = UserId(UUID.randomUUID()),
         title = "Dune",
         author = "Frank Herbert",
         publisher = null,

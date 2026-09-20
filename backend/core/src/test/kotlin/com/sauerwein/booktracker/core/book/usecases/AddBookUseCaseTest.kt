@@ -2,16 +2,20 @@ package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.user.UserId
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.*
 import kotlin.test.*
 
 class AddBookUseCaseTest {
 
+    private val userId = UserId(UUID.randomUUID())
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-01-01T10:00:00.123456789Z"), ZoneOffset.UTC)
-    private val addBookUseCase = AddBookUseCase(bookRepository, clock)
+    private val addBookUseCase =
+        AddBookUseCase(bookRepository = bookRepository, currentUserProvider = { userId }, clock = clock)
 
     private val command = AddBookCommand(
         title = "Dune",
@@ -27,7 +31,7 @@ class AddBookUseCaseTest {
     fun `saves the book and returns it`() {
         val book = addBookUseCase(command)
 
-        assertEquals(book, bookRepository.findById(book.id))
+        assertEquals(book, bookRepository.findVisible(book.id, userId))
     }
 
     @Test
@@ -41,6 +45,13 @@ class AddBookUseCaseTest {
         assertEquals(1965, book.publicationYear)
         assertEquals(896, book.pageCount)
         assertEquals("https://example.com/dune.jpg", book.coverUrl)
+    }
+
+    @Test
+    fun `sets the owner to the current user`() {
+        val book = addBookUseCase(command)
+
+        assertEquals(userId, book.ownerId)
     }
 
     @Test
@@ -58,7 +69,7 @@ class AddBookUseCaseTest {
         val second = addBookUseCase(command)
 
         assertNotEquals(first.id, second.id)
-        assertEquals(2, bookRepository.findAll().size)
+        assertEquals(2, bookRepository.stored().size)
     }
 
     @Test
@@ -67,6 +78,6 @@ class AddBookUseCaseTest {
             addBookUseCase(command.copy(title = " "))
         }
 
-        assertTrue(bookRepository.findAll().isEmpty())
+        assertTrue(bookRepository.stored().isEmpty())
     }
 }
