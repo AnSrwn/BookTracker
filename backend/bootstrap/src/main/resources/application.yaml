@@ -1,3 +1,9 @@
 spring:
   application:
     name: BookTracker
+  web:
+    locale: en
+    locale-resolver: fixed
+  mvc:
+    problemdetails:
+      enabled: true

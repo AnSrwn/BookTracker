@@ -6,6 +6,7 @@ import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.usecases.AddBookUseCase
 import com.sauerwein.booktracker.core.book.usecases.GetBookUseCase
 import com.sauerwein.booktracker.core.book.usecases.GetBooksUseCase
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
@@ -22,7 +23,7 @@ class BookController(
     private val getBooksUseCase: GetBooksUseCase,
 ) {
     @PostMapping
-    fun create(@RequestBody request: CreateBookRequest): ResponseEntity<BookResponse> {
+    fun create(@Valid @RequestBody request: CreateBookRequest): ResponseEntity<BookResponse> {
         val book = addBookUseCase(command = request.toCommand())
 
         val location = ServletUriComponentsBuilder
