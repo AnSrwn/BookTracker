@@ -6,6 +6,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":adapter:web"))
     implementation(project(":adapter:persistence"))
+    implementation(project(":adapter:security"))
 
     implementation(libs.spring.boot.starter)
 
