@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.user.CurrentUserProvider
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -21,6 +22,7 @@ data class AddBookCommand(
 
 class AddBookUseCase(
     private val bookRepository: BookRepository,
+    private val currentUserProvider: CurrentUserProvider,
     private val clock: Clock,
 ) {
     operator fun invoke(command: AddBookCommand): Book {
@@ -28,6 +30,7 @@ class AddBookUseCase(
 
         val book = Book(
             id = BookId(UUID.randomUUID()),
+            ownerId = currentUserProvider.currentUserId(),
             title = command.title,
             author = command.author,
             publisher = command.publisher,

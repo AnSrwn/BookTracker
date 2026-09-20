@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.core.book.models
 
 import com.sauerwein.booktracker.core.shared.exception.ValidationException
+import com.sauerwein.booktracker.core.user.UserId
 import java.net.URI
 import java.time.Instant
 import java.util.*
@@ -10,6 +11,7 @@ value class BookId(val value: UUID)
 
 data class Book(
     val id: BookId,
+    val ownerId: UserId?,
     val title: String,
     val author: String,
     val publisher: String?,
