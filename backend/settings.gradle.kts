@@ -18,4 +18,5 @@ rootProject.name = "BookTracker"
 include("core")
 include("adapter:web")
 include("adapter:persistence")
+include("adapter:security")
 include("bootstrap")

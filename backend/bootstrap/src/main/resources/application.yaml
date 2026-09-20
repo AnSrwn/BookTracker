@@ -7,8 +7,14 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${BOOKTRACKER_ISSUER_URI:http://localhost:8180/realms/booktracker}
 
-# TODO
-booktracker:
-  # Stands in for the Keycloak sub until auth arrives. Change it and restart to act as another user.
-  dev-user-id: 00000000-0000-0000-0000-000000000001
+springdoc:
+  swagger-ui:
+    oauth:
+      client-id: booktracker-app
+      use-pkce-with-authorization-code-grant: true
