@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.core.book.models
 
+import com.sauerwein.booktracker.core.shared.exception.ValidationException
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -37,11 +38,13 @@ class IsbnTest {
 
     @Test
     fun `rejects an ISBN-13 with a wrong check digit`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("978-0-306-40615-8")
         }
 
         assertContains(exception.message.orEmpty(), "check digit")
+        assertEquals("isbn", exception.field)
+        assertEquals("InvalidIsbn", exception.code)
     }
 
     @Test
@@ -60,7 +63,7 @@ class IsbnTest {
 
     @Test
     fun `rejects an ISBN-13 without prefix 978 or 979`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("1234567890128")
         }
 
@@ -69,7 +72,7 @@ class IsbnTest {
 
     @Test
     fun `rejects an ISBN-10 with a wrong check digit`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("0306406153")
         }
 
@@ -78,7 +81,7 @@ class IsbnTest {
 
     @Test
     fun `rejects a value with a wrong length`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("97803064061")
         }
 
@@ -87,7 +90,7 @@ class IsbnTest {
 
     @Test
     fun `rejects an empty value`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("")
         }
 
@@ -96,7 +99,7 @@ class IsbnTest {
 
     @Test
     fun `rejects an ISBN-10 with X in a position other than the last`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("X306406152")
         }
 
@@ -105,7 +108,7 @@ class IsbnTest {
 
     @Test
     fun `rejects an ISBN-13 containing letters`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("97803064061X7")
         }
 
@@ -114,7 +117,7 @@ class IsbnTest {
 
     @Test
     fun `rejects non-ASCII digits`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             Isbn.of("٩٧٨0306406157")
         }
 

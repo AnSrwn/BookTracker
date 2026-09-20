@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.core.book.models
 
+import com.sauerwein.booktracker.core.shared.exception.ValidationException
 import java.net.URI
 import java.time.Instant
 import java.util.*
@@ -23,7 +24,14 @@ data class Book(
         require(title.isNotBlank()) { "Title must not be blank" }
         require(author.isNotBlank()) { "Author must not be blank" }
         require(pageCount == null || pageCount > 0) { "Page count must be positive" }
-        require(coverUrl == null || isHttpUrl(coverUrl)) { "Cover URL must be an absolute http(s) URL: '$coverUrl'" }
+
+        if (coverUrl != null && !isHttpUrl(coverUrl)) {
+            throw ValidationException(
+                field = "coverUrl",
+                code = "InvalidCoverUrl",
+                message = "Cover URL must be an absolute http(s) URL: '$coverUrl'",
+            )
+        }
     }
 }
 

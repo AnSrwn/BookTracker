@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.core.book.models
 
+import com.sauerwein.booktracker.core.shared.exception.ValidationException
 import java.time.Instant
 import java.util.*
 import kotlin.test.Test
@@ -39,37 +40,39 @@ class BookTest {
 
     @Test
     fun `rejects a javascript cover URL`() {
-        val exception = assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<ValidationException> {
             book("javascript:alert(1)")
         }
 
         assertContains(exception.message.orEmpty(), "http(s)")
+        assertEquals("coverUrl", exception.field)
+        assertEquals("InvalidCoverUrl", exception.code)
     }
 
     @Test
     fun `rejects a data cover URL`() {
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ValidationException> {
             book("data:text/html,<script>alert(1)</script>")
         }
     }
 
     @Test
     fun `rejects a relative cover URL`() {
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ValidationException> {
             book("/covers/dune.jpg")
         }
     }
 
     @Test
     fun `rejects an http URL without host`() {
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ValidationException> {
             book("https:///dune.jpg")
         }
     }
 
     @Test
     fun `rejects a malformed cover URL`() {
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<ValidationException> {
             book("https://exa mple.com/dune.jpg")
         }
     }
