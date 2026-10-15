@@ -179,6 +179,7 @@ backend/
 │     │  ├─ Book.kt                           # Domain model + BookId value object
 │     │  ├─ BookCandidate.kt                  # Unsaved search hit + source provenance (planned)
 │     │  ├─ SearchQuery.kt                    # Classifies ISBN vs. free text (planned)
+│     │  ├─ SourceId.kt                       # SourceId + SourceRecordId value classes (planned)
 │     │  └─ Isbn.kt                           # Value object, always a valid ISBN-13
 │     └─ usecases/
 │        ├─ AddBookUseCase.kt                 # Use case + AddBookCommand
@@ -304,6 +305,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 - Naming scheme: `V<n>__<description>.sql`. Migrations that have already been applied are never modified.
 - User ownership via a nullable `owner_id` column (Keycloak `sub`, UUID, added in `V3__book_owner.sql`): set means private to that user, `NULL` means a public catalog entry. No user table, and no foreign key.
 - Because of that missing foreign key, Keycloak's user store is as critical as this database: if a realm is recreated, every `sub` changes and every row is orphaned. A production Keycloak therefore needs its own persistent database and backups.
+- Edition granularity (ADR-008): a row is one edition, so several rows per work are normal and expected. A nullable `work_key` (Open Library work key where known) rides along in the same migration, purely to make later grouping possible without touching accumulated rows.
 - Catalog provenance (`V4__book_source.sql`, planned): `source`, `source_id` (that system's own key — a DNB IDN like `1055026991`, an Open Library edition key like `OL7353617M`, a Google volume id), `source_fetched_at`, and `review_state`. A unique index on `(source, source_id) WHERE owner_id IS NULL` keeps the catalog free of duplicates when two users resolve the same book, which ISBN alone cannot do — some records carry none.
 - **`source` is an open vocabulary, not a closed enum:** plain `TEXT` with no constraint on the value set. Provider ids are lowercase, stable and never renamed — `manual`, `dnb`, `open_library`, `google_books`, and whatever comes later. The reason is that **the data outlives the providers**: a row written from DNB stays `source = 'dnb'` for as long as it exists, years after the client might be deleted. The column records history; which providers are *active* is configuration (see External Book Data below), not schema. A `CHECK` listing the known providers would turn every new provider into a migration and would make retiring one impossible.
 - Only data we are licensed to store may enter the **public** catalog, and that is written as an **allowlist**, so it fails closed:
@@ -318,7 +320,36 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 
 Metadata comes from three public sources at request time, behind the single port `BookMetadataSource` (ADR-007). `:adapter:bookdata` holds one client per source plus the merge and all resilience; `core` and the app see one normalised `BookCandidate` shape.
 
-**Division of labour: Google finds the book, DNB and Open Library describe the one we keep.** Recall and field accuracy are different qualities. Google's free-text matching is far ahead — it survives typos and partial titles — while its field data is largely derived from scans and publisher feeds, so page counts and dates are the weak spots. A national library record describes a specific physical edition. Open Library is CC0 and good for English editions, but its German coverage is thin: for ISBN `9783570402931` (Eragon, cbj) it has no edition record at all, while DNB returns a full one.
+**Division of labour: Google finds the book, DNB and Open Library describe the one we keep.** Recall and field accuracy are different qualities. Google's free-text matching is far ahead — it survives typos and partial titles — while its field data is largely derived from scans and publisher feeds, so page counts and dates are the weak spots. A national library record describes a specific physical edition.
+
+Measured, not assumed — each source is strong in exactly one column and none in both:
+
+| | Free-text search | ISBN lookup |
+|---|---|---|
+| **Google Books** | ✅ excellent — 161 hits for `eragon paolini`, 9 of the top 10 German editions | ❌ **unusable**, see below |
+| **DNB** | ❌ **no relevance ranking at all** | ✅ complete and authoritative for German imprints |
+| **Open Library** | usable | ⚠ edition-dependent |
+
+**DNB cannot do free-text search, and this is structural.** SRU rejects `sortKeys` outright (`info:srw/diagnostic/1/8 Unsupported parameter`), so results come back **newest-first, never by relevance**. For `PER=Herrndorf and TIT=Tschick` — 98 records — the top three were a 2026 audiobook, a school edition, and the *Georgian* translation. Its descriptor therefore declares `supportsFreeTextSearch = false`; it is a lookup and field authority, not a search provider.
+
+**The decisive axis for ISBN lookup is the edition, not the language.** This is easy to get wrong: a single failed lookup looks like a coverage gap. For `9783570402931` (Eragon, cbj, 22nd printing 2014) **only DNB** has a record — Google and Open Library both return nothing. But both of them do carry other German editions of the same work (Google: `9783641023027`, `9783570316443`; Open Library resolves the first of those). So neither is "thin on German"; they simply index *different printings*.
+
+That matters because a barcode scan yields the ISBN of **one specific printing**. The consequences:
+
+- Fan-out across sources on ISBN lookup is not a nicety, it is how a hit happens at all. A single-source lookup fails often.
+- **DNB goes first for German ISBNs**, because legal deposit means it receives essentially every German printing, while a commercial index carries what it has digitised or been fed. That is the real argument — not a coverage deficiency elsewhere.
+- Reverse the order for free-text search: Google first, DNB not at all.
+
+**Google's `isbn:` operator does not work, so Google is a search-only provider.** Its descriptor declares `supportsIsbnLookup = false` and the scan flow never calls it — which also means the most important path in the MVP consumes none of the 1,000/day budget.
+
+The evidence: lowercase `isbn:` returned `totalItems: 0` for **four of four** ISBNs, including `0735619670`, the control that is documented in a widely-cited Stack Overflow answer as returning exactly one hit. It also returned 0 for `9783641023027` — an ISBN *Google itself* had just reported for a German Eragon edition. The operator is documented ("Returns results where the text following this keyword is the ISBN number") but the documentation says nothing about ISBN-10 vs ISBN-13, hyphens or matching semantics, and the community notes describing it working date from 2012–2014.
+
+Two traps worth knowing before someone tries to "fix" the zero results:
+
+- **The operator is case-sensitive, and the uppercase form silently degrades to free text.** `ISBN:0735619670` returns 8 hits where `isbn:0735619670` returns 0. Those 8 are fuzzy matches, *not* an exact ISBN match — using them for a scanned barcode would attach the wrong book to the wrong ISBN. Eight plausible-looking results are worse than zero honest ones.
+- **Omitting the colon is not a syntax error, just a different query.** `q=isbn0735619670` runs a free-text search.
+
+Google's service was also visibly degraded while this was measured (see the `503` note above), so the flag is worth re-testing once when the API is calm. Because the capability is a value in the descriptor rather than a branch in the composite, flipping it back is a one-line change and no restructuring.
 
 Merge happens **field by field** — no single source reliably has everything — as **first non-null wins over a configured order**:
 
@@ -375,11 +406,14 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 |---|---|---|---|
 | Open Library | **we cap at 1 req/s** — the non-identified default, although a contact `User-Agent` would allow 3 | token bucket, blocks and waits | a sub-second wait is invisible |
 | DNB SRU | **none published**; we self-impose 1 req/s | token bucket, blocks and waits | as above |
-| Google Books | a **daily** query budget per API key | counter, non-blocking guard | **drop Google from the fan-out** and answer from the CC0 sources — a day cannot be waited out |
+| Google Books | **1,000 queries/day** per key, plus 100/min per user | counter, non-blocking guard | **drop Google from the fan-out** and answer from the CC0 sources — a day cannot be waited out |
 
 - **Open Library is capped at the 1 req/s non-identified default on purpose,** even though the contact `User-Agent` we send would permit 3. The `User-Agent` stays regardless: it is what the policy asks for and what lets them contact us instead of blocking us. The headroom is deliberate — the limit is per IP and shared with anything else behind it, the cost of being wrong is "aggressive rate limiting or blocking" rather than a clean error, and with explicit search plus the catalog absorbing repeats the extra 2 req/s buys nothing worth that risk.
 - A per-second limiter is useless against a daily budget: blocking would hang the request for hours. Google needs a *degrade* path instead, flagged in metrics so it is visible.
 - Quota exhaustion arrives as **`429`** (`Quota exceeded for ... 'Queries per day'`) and sometimes as a `403` with a quota reason. Treat both as "budget gone". **Retry must never retry them** — retrying a rate-limit response makes it worse.
+- Google also returns transient **`503 Service temporarily unavailable`**, and not rarely: 5 of 8 calls in one exploratory run. So the retry policy has to distinguish two failures that look superficially similar — `503` **must** be retried with backoff (2–3 attempts), `429`/quota-`403` must **never** be. Without the `503` retry a search silently loses a source at a noticeable rate; with a `429` retry you make an exhausted budget worse.
+- A missing or empty API key fails as an ordinary `429` from a shared anonymous pool, distinguishable from real exhaustion only by the project number in the message. So the key is validated at startup: either fail fast or do not register the provider at all. Running silently unauthenticated turns a configuration mistake into what looks like a quota problem.
+- **The daily figure is the binding one: 1,000 queries/day** (read off the Cloud Console for this project; the 10,000 figure in circulation online is wrong here). That is ~41/hour sustained, so roughly 1,000 catalog misses per day across all users. Comfortable for private use, and the ceiling that decides when the catalog stops being a nicety and becomes the only thing making this work. The second limit, 100 queries/min per user, is not binding: without a `quotaUser` parameter the whole backend counts as one user, and 100/min is far above what 1,000/day allows anyway. Passing a pseudonymous `quotaUser` (a hash of the Keycloak `sub`, never an email) would spread *that* limit per end user but does nothing for the daily cap — so it is not worth doing until the daily quota is raised.
 - An API key is mandatory for Google: unauthenticated requests share a pool that is in practice already exhausted. Key via `BOOKTRACKER_GOOGLE_BOOKS_API_KEY`, never committed.
 - **`country=DE` on every Google request.** From a server whose IP Google cannot geolocate, the Books API answers `403 Cannot determine user location for geographically restricted operation`. It works from a laptop and fails from a container, so it is easy to miss.
 - Per-source timeouts (connect ~1 s, read ~2–3 s) and a Resilience4j circuit breaker: a slow Open Library must never hold up a fast Google response, and an outage degrades the result instead of hanging the request. Fan-out runs in parallel on virtual threads (`spring.threads.virtual.enabled`), so blocking clients cost no pool tuning.
@@ -587,7 +621,7 @@ sequenceDiagram
 
 - **Context:** Users add books by scanning an ISBN or by searching title/author. Maintaining a full catalog in our own database from the start was explicitly not wanted: it means a bulk import pipeline, tens of GB of storage and a monthly refresh story, all before the first user exists. So the data has to come from public sources at request time. Two constraints make that less obvious than it sounds. The free tiers are rate-limited **far** below what a naive pass-through proxy needs — Open Library allows 3 req/s per IP for identified callers, we hold ourselves to the 1 req/s non-identified default, and a backend is one IP for its whole user base. And the sources differ in what they are licensed for: Open Library and DNB title data are CC0, while the Google Books terms contain no caching clause, which makes persisting its records legally grey.
 - **Decision:** Three sources behind one port `BookMetadataSource` in `core`, implemented in a new module `:adapter:bookdata`. **Google Books finds the book; DNB and Open Library describe the one we keep** — Google's strength is recall and ranking, not field accuracy, and it is also the source we may not store. Every resolved CC0 record is upserted into the existing `book` catalog (`owner_id IS NULL`, ADR-006), so the catalog accumulates exactly the books users look up and most lookups never leave the backend. A `review_state` column is added at the same time and filtered on from day one, while still defaulting to `APPROVED`.
-- **Decision, part two — the provider set is configuration, not structure.** Sources must be addable, removable and reorderable without touching the orchestration, because the set will change: DNB may go, a publisher API such as Penguin Random House may arrive. Three things make that hold. Each provider carries a `SourceDescriptor` (stable lowercase `id`, capabilities, scope, and whether its licence permits storing records publicly), so `CompositeBookMetadataSource` stays generic and skips providers that cannot serve a query. Precedence and enablement live in `application.yaml` as **first non-null wins over a configured order**, keyed by language where it matters. And `source` in the database is an **open vocabulary** (`TEXT`, no value `CHECK`), because the data outlives the providers — a row written from DNB keeps `source = 'dnb'` long after the client is gone. The licence rule is an **allowlist** (`owner_id IS NOT NULL OR source IN (…)`), so an unreviewed provider is search-only by default rather than publishable by oversight.
+- **Decision, part two — the provider set is configuration, not structure.** Sources must be addable, removable and reorderable without touching the orchestration, because the set will change: DNB may go, a publisher API such as Penguin Random House may arrive. Three things make that hold. Each provider carries a `SourceDescriptor` (stable lowercase `id`, capabilities, scope, and whether its licence permits storing records publicly), so `CompositeBookMetadataSource` stays generic and skips providers that cannot serve a query. Precedence and enablement live in `application.yaml` as **first non-null wins over a configured order**, keyed by language where it matters. And `source` in the database is an **open vocabulary** (`TEXT`, no value `CHECK`), because the data outlives the providers — a row written from DNB keeps `source = 'dnb'` long after the client is gone. The licence rule is an **allowlist** (`owner_id IS NOT NULL OR source IN (…)`), so an unreviewed provider is search-only by default rather than publishable by oversight. In Kotlin the two identifiers are value classes — `SourceId` for the provider and `SourceRecordId` for its own key — not an enum and not bare `String`s.
 
 | | Hard-coded merge (`if` per source) | Config-driven order + descriptors ✅ | Plugin SPI / dynamic loading |
 |---|---|---|---|
@@ -609,7 +643,7 @@ sequenceDiagram
 
 | Source | Role | Licence | Free-tier limit | Intended use |
 |---|---|---|---|---|
-| Google Books | recall and ranking for free-text search | restrictive, **not** persisted | daily query budget per key; `429` when spent | own terms; branding and attribution apply |
+| Google Books | recall and ranking for free-text search **only** — its `isbn:` operator does not work | restrictive, **not** persisted | 1,000 queries/day per key; `429` when spent | own terms; branding and attribution apply |
 | DNB SRU | canonical fields for German imprints | **CC0** | free, no registration, no published limit; self-capped at 1 req/s | **no restriction, incl. commercial** — SRU for lookups, OAI-PMH for bulk |
 | Open Library | fields and covers outside the German market | **CC0** | 3 req/s with a contact `User-Agent`; **self-capped at 1 req/s** | **mission-aligned, human-facing lookup only** — not a bulk or high-traffic commercial backend |
 
@@ -624,6 +658,7 @@ sequenceDiagram
   - ➖ Google's daily budget cannot be throttled into submission, so it needs a distinct degrade path rather than a shared rate limiter.
   - ⚠ **Open Library's live API is licensed by intent, not just by rate.** Their policy restricts it to mission-aligned, human-facing lookup and excludes a bulk or high-traffic commercial backend. This design is inside that intent while BookTracker is private or small and every call answers a human's search. It leaves that intent the moment the backend is commercial or high-traffic — a threshold no rate limiter can clear.
   - ↪ **Therefore option D is conditional, not merely optional.** Going professional means moving Open Library off the live API: either to the monthly CC0 dumps, which they offer for precisely this purpose, or to terms agreed with them at `openlibrary@archive.org`. Google Books and DNB can stay request-time. Because option D seeds the same table through the same port, that migration is an import job plus a disabled client — no API, schema or app change. Budget it as a release, not an afternoon.
+  - ➕ The scan flow — the MVP's most important path — consumes no Google budget at all, because Google cannot do ISBN lookup and is never called for it. The 1,000/day limit therefore only ever constrains free-text search.
   - ➕ Providers are a configured set: adding one is a client, a mapper and a config block; removing one is `enabled: false` plus deleting its package, with **no data migration** — existing rows keep their `source` id and stay valid.
   - ➖ The generic composite costs a descriptor per provider and a properties class. Slight overhead at three providers; it is what stops the fan-out accumulating per-source special cases as the set grows.
   - ➖ Three things stay irreducibly manual: one mapper per provider, a licence read per provider, and the empirical judgement of which source is best per field. Config makes changing the order cheap, not knowing it.
@@ -631,7 +666,32 @@ sequenceDiagram
   - ↪ If search quality or independence ever outweighs storage, option D can seed the very same table — the port, the schema and the API stay as they are.
   - ↪ A publisher API (e.g. Penguin Random House) fits as a *scoped* provider: high precedence for its own imprints, nothing elsewhere, and almost certainly search-only under the allowlist. It is the case the descriptor model exists for.
   - ↪ Caching is additive: a `CachingBookMetadataSource` decorator is one class and one `@Bean`, deliberately deferred until the metrics ask for it. The catalog upsert is **not** deferred, because it is the data model, not a cache — rows without a stable `(source, source_id)` identity cannot be deduped, refreshed or attributed afterwards.
+  - ⚠ **`SourceId` must stay a value class and never become an enum.** An enum is the obvious-looking tidy-up and it silently closes the vocabulary again: a new provider would need a code change, and a retired one could not keep its existing rows. A value class gives the same type safety while validating the *format* (`[a-z0-9_]+`, lowercase, never renamed) rather than *membership*. The format rule was prose in this ADR until it became an invariant in `SourceId.of`.
   - ⚠ Self-limiting breaks with more than one instance: two backends each politely capped at 1 req/s send 2 req/s and get blocked. Shared state (Redis-backed buckets, e.g. Bucket4j) is required the moment the deployment scales out — the same decision as a shared cache.
+
+### ADR-008: The edition is the unit of the catalog
+
+- **Context:** A barcode scan yields the ISBN of **one specific printing**. The same work appears under many ISBNs: *Eragon* exists as the cbj paperback `9783570402931` (733 pages), the e-book `9783641023027`, an English Knopf edition, a Georgian translation, and as an audiobook. Bibliography distinguishes three levels — **work** (what Paolini wrote), **manifestation/edition** (a specific printing, which is what carries an ISBN), and **item** (the copy on your shelf). Open Library models the first two explicitly (`OL…W` vs `OL…M`); DNB records and Google volumes are editions. A row in `book` has to be one of these, and the choice decides what the app can express.
+- **Decision:** A row is an **edition**, identified by its ISBN where it has one. The deciding constraint is in the MVP rather than in taste: reading progress is "page X of Y", and **the page count belongs to the edition** — 733 pages for that paperback, no fixed pagination for the e-book, none at all for the audiobook. Possession is edition-level too, and the scanned barcode *is* the edition, so no resolution step is needed. A **nullable `work_key`** is added in the same migration (Open Library's work key where known, `NULL` otherwise) so editions can be grouped later without migrating accumulated rows. No `work` table and no work-level features in the MVP. Grouping is asymmetric by operation: **ISBN lookup never groups** — the user wants the edition they scanned — while **free-text search groups**, because there they want the book, not the same title six times.
+
+| | Edition as the row ✅ | Work as the row | Separate `work` + `edition` tables |
+|---|---|---|---|
+| Page count, reading progress | exact | **impossible** — whose pagination? | exact |
+| Barcode scan maps to | the row directly | needs edition → work resolution | the edition row |
+| "Have I read this?" across editions | ❌ not without `work_key` | ✅ | ✅ |
+| Free-text result noise | several rows per work, needs display grouping | none | none |
+| Rows per work | n | 1 | 1 + n |
+| Effort now | **none** — this is the current schema | rework, and loses pagination | two tables, two mappers, a join |
+
+- **Consequences:**
+  - ➕ Progress and possession are exactly representable; nothing in the MVP has to be approximated.
+  - ➕ The scan flow needs no extra step: the scanned ISBN *is* the row's identity. The existing ISBN partial indexes and `(source, source_id)` already assume this granularity, so nothing changes.
+  - ➖ Free-text search returns several editions of one work and looks like duplicates. Handled as **display-level grouping** in the merge (normalised title + author + year), deliberately not as a data model.
+  - ➖ "Have I read this?" does not carry across editions: read the hardcover, scan the paperback, and the app says no. Irrelevant for the MVP (no statistics, no history), relevant for everything after it.
+  - ➖ Non-print manifestations are editions too and will surface — DNB returned *Tschick – Hörspiel* as the top hit for one query. `300$a` reveals them (`Online-Ressource` instead of `733 Seiten`), so they are filtered when mapping: an app about pages read has no use for an audiobook.
+  - ↪ `work_key` is the migration-free path to grouping later: fill it from Open Library where available, leave it `NULL` elsewhere. An option, not a promise — OL does not have every edition, as `9783570402931` showed.
+  - ↪ If work-level features ever arrive, a `work` table can be added with editions pointing at it. Only `work_key` needs backfilling, and nothing that references `book` changes.
+  - ⚠ **A title+author fingerprint is not a work key.** It would not join *Eldest* with *Der Auftrag des Ältesten* — the same work in two languages — and would wrongly join unrelated books sharing a title. Such heuristics are for display grouping only, never for identity.
 
 ## 9. Local Development
 

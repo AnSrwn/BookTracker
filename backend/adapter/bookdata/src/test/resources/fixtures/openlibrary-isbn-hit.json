@@ -1,0 +1,110 @@
+{
+  "identifiers": {
+    "librarything": [
+      "6518"
+    ],
+    "goodreads": [
+      "311502",
+      "1638562"
+    ]
+  },
+  "title": "Eragon",
+  "authors": [
+    {
+      "key": "/authors/OL1425963A"
+    }
+  ],
+  "publish_date": "2003",
+  "series": [
+    "The Inheritance Cycle Series, Book 1;"
+  ],
+  "covers": [
+    15244834,
+    12848703
+  ],
+  "url": [
+    "http://www.loc.gov/catdir/bios/random055/2003047481.html",
+    "http://www.loc.gov/catdir/samples/random045/2003047481.html",
+    "http://www.loc.gov/catdir/description/random0414/2003047481.html"
+  ],
+  "uri_descriptions": [
+    "Contributor biographical information",
+    "Sample text",
+    "Publisher description"
+  ],
+  "genres": [
+    "Fiction."
+  ],
+  "source_records": [
+    "ia:eragon00paol_1",
+    "bwb:9780375826696",
+    "bwb:9780375826689",
+    "midcolumbia:1504363"
+  ],
+  "languages": [
+    {
+      "key": "/languages/eng"
+    }
+  ],
+  "subjects": [
+    "Fantasy.",
+    "Dragons -- Fiction.",
+    "Youths' writings."
+  ],
+  "publish_country": "nyu",
+  "type": {
+    "key": "/type/edition"
+  },
+  "uris": [
+    "http://www.loc.gov/catdir/bios/random055/2003047481.html",
+    "http://www.loc.gov/catdir/samples/random045/2003047481.html",
+    "http://www.loc.gov/catdir/description/random0414/2003047481.html"
+  ],
+  "physical_dimensions": "23.5 x 15.8 x 4 centimeters",
+  "publishers": [
+    "Alfred A. Knopf",
+    "Distributed by Random House"
+  ],
+  "physical_format": "Hardcover",
+  "publish_places": [
+    "New York"
+  ],
+  "pagination": "509 p. :",
+  "copyright_date": "2002",
+  "lexile": "710",
+  "key": "/books/OL3685343M",
+  "number_of_pages": 509,
+  "works": [
+    {
+      "key": "/works/OL5819895W"
+    }
+  ],
+  "ocaid": "eragon00paol_1",
+  "isbn_10": [
+    "0375826688",
+    "0375926682"
+  ],
+  "isbn_13": [
+    "9780375826689"
+  ],
+  "lccn": [
+    "2003047481"
+  ],
+  "dewey_decimal_class": [
+    "[Fic]"
+  ],
+  "lc_classifications": [
+    "PZ7.P19535 Er 2003",
+    "PZ7.P19535Er 2003"
+  ],
+  "latest_revision": 32,
+  "revision": 32,
+  "created": {
+    "type": "/type/datetime",
+    "value": "2008-04-01T03:28:50.625462"
+  },
+  "last_modified": {
+    "type": "/type/datetime",
+    "value": "2026-08-09T20:28:01.794790"
+  }
+}

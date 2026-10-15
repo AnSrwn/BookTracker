@@ -26,6 +26,14 @@ value class Isbn private constructor(val value: String) {
             }
         }
 
+        fun ofOrNull(rawValue: String): Isbn? {
+            return try {
+                of(rawValue)
+            } catch (e: ValidationException) {
+                null
+            }
+        }
+
         private fun fromIsbn10(value: String, rawValue: String): Isbn {
             val digitsValid = value.dropLast(1).all { it.isValidNumber() }
             val checkCharValid = value.last().isValidNumber() || value.last() == ISBN_CHECK_DIGIT_TEN
