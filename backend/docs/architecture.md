@@ -340,16 +340,20 @@ That matters because a barcode scan yields the ISBN of **one specific printing**
 - **DNB goes first for German ISBNs**, because legal deposit means it receives essentially every German printing, while a commercial index carries what it has digitised or been fed. That is the real argument — not a coverage deficiency elsewhere.
 - Reverse the order for free-text search: Google first, DNB not at all.
 
-**Google's `isbn:` operator does not work, so Google is a search-only provider.** Its descriptor declares `supportsIsbnLookup = false` and the scan flow never calls it — which also means the most important path in the MVP consumes none of the 1,000/day budget.
+**Google's field-restricted search is broken, so Google is a search-only provider for now.** Its descriptor declares `supportsIsbnLookup = false` and the scan flow never calls it — which also means the most important path in the MVP consumes none of the 1,000/day budget.
 
-The evidence: lowercase `isbn:` returned `totalItems: 0` for **four of four** ISBNs, including `0735619670`, the control that is documented in a widely-cited Stack Overflow answer as returning exactly one hit. It also returned 0 for `9783641023027` — an ISBN *Google itself* had just reported for a German Eragon edition. The operator is documented ("Returns results where the text following this keyword is the ISBN number") but the documentation says nothing about ISBN-10 vs ISBN-13, hyphens or matching semantics, and the community notes describing it working date from 2012–2014.
+**The cause is a current Google-side regression, not a property of the API.** Since **3 October 2026**, every field-restricted operator — `intitle:`, `inauthor:` and `isbn:` — returns `totalItems: 0` while plain queries work normally. It is reported by several independent people on Google's developer forum, tracked as issue `569300353`, unacknowledged by Google and unresolved. The documentation still lists the operators as supported.
+
+Measured here on two days, the second with the service entirely calm (no `503`, and `eragon paolini` returning an identical 161 hits both times): `isbn:` gave 0 for `0735619670` — a control documented in a widely-cited Stack Overflow answer as returning exactly one hit — for `9783641023027`, an ISBN *Google itself* reports for a German Eragon edition, and for `9780375826689`. Querying the bare digits as free text returns 0 as well.
+
+Ruled out, so nobody repeats the experiments: **not the syntax** (`?q=isbn:<isbn>` is what Google's documentation, community examples and third-party clients all build), **not the operator's case**, **not the `country` parameter** (queries without it return 0 just the same), **not a cold project**, **not our key or project** (the same breakage is reported globally), and **not coverage** (Google returns these very ISBNs itself in `industryIdentifiers`).
 
 Two traps worth knowing before someone tries to "fix" the zero results:
 
 - **The operator is case-sensitive, and the uppercase form silently degrades to free text.** `ISBN:0735619670` returns 8 hits where `isbn:0735619670` returns 0. Those 8 are fuzzy matches, *not* an exact ISBN match — using them for a scanned barcode would attach the wrong book to the wrong ISBN. Eight plausible-looking results are worse than zero honest ones.
 - **Omitting the colon is not a syntax error, just a different query.** `q=isbn0735619670` runs a free-text search.
 
-Google's service was also visibly degraded while this was measured (see the `503` note above), so the flag is worth re-testing once when the API is calm. Because the capability is a value in the descriptor rather than a branch in the composite, flipping it back is a one-line change and no restructuring.
+**Revisit the flag when Google fixes the regression** (issue `569300353`). The decision stands regardless of the fix, though: DNB and Open Library cover ISBN lookup between them, a Google hit would spend one of 1,000 daily calls on the MVP's most frequent path, and because Google data may not enter the public catalog it could only ever become a private book. So the flag buys back a marginal coverage gain, not a missing capability — and flipping it is one value in the descriptor, which is exactly what that design is for.
 
 Merge happens **field by field** — no single source reliably has everything — as **first non-null wins over a configured order**:
 
