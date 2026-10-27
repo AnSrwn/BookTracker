@@ -1,0 +1,66 @@
+{
+  "remote_ids": {
+    "wikidata": "Q93620",
+    "isni": "0000000117624328",
+    "viaf": "49468743",
+    "bookbrainz": "b3139852-044d-49c1-802f-b291faaf047b",
+    "musicbrainz": "84bf895b-ec07-40ee-9783-60b2d6b3f614",
+    "goodreads": "8349",
+    "imdb": "nm1845777",
+    "lc_naf": "n2002039242",
+    "librarything": "paolinichristopher",
+    "opac_sbn": "TO0V507753",
+    "gnd": "129384240"
+  },
+  "source_records": [
+    "amazon:1529046521",
+    "amazon:8417771557",
+    "amazon:274702119X",
+    "amazon:8415729243",
+    "amazon:059317559X",
+    "amazon:535304133X",
+    "amazon:038561618X",
+    "promise:bwb_daily_pallets_2024-11-14:S0-AJW-754",
+    "bwb:9781637991039"
+  ],
+  "bio": {
+    "type": "/type/text",
+    "value": "American author of children\u2019s fantasy novels"
+  },
+  "personal_name": "Christopher Paolini",
+  "birth_date": "1983-11-17",
+  "type": {
+    "key": "/type/author"
+  },
+  "links": [
+    {
+      "title": "Wikipedia",
+      "url": "http://en.wikipedia.org/wiki/Christopher_Paolini",
+      "type": {
+        "key": "/type/link"
+      }
+    }
+  ],
+  "photos": [
+    6957121
+  ],
+  "name": "Christopher Paolini",
+  "key": "/authors/OL1425963A",
+  "alternate_names": [
+    "C. Paolini",
+    "Paolini  Christopher",
+    "Kristofer Paolini",
+    "Paolini Kristofer",
+    "Christopher Paulini"
+  ],
+  "latest_revision": 17,
+  "revision": 17,
+  "created": {
+    "type": "/type/datetime",
+    "value": "2008-04-01T03:28:50.625462"
+  },
+  "last_modified": {
+    "type": "/type/datetime",
+    "value": "2026-03-13T10:24:53.603373"
+  }
+}

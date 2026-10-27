@@ -13,6 +13,11 @@ spring:
         jwt:
           issuer-uri: ${BOOKTRACKER_ISSUER_URI:http://localhost:8180/realms/booktracker}
 
+booktracker:
+  bookdata:
+    # Open Library asks for a contact User-Agent
+    user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
+
 springdoc:
   swagger-ui:
     oauth:
