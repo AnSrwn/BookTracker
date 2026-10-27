@@ -17,6 +17,7 @@ postgresql = { module = "org.postgresql:postgresql" }
 spring-boot-docker-compose = { module = "org.springframework.boot:spring-boot-docker-compose" }
 springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 spring-boot-starter-security-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-security-oauth2-resource-server" }
+spring-context = { module = "org.springframework:spring-context" }
 
 # Test Dependencies
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }

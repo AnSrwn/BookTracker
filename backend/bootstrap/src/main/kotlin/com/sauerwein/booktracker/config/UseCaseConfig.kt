@@ -1,9 +1,8 @@
 package com.sauerwein.booktracker.config
 
+import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.BookRepository
-import com.sauerwein.booktracker.core.book.usecases.AddBookUseCase
-import com.sauerwein.booktracker.core.book.usecases.GetBookUseCase
-import com.sauerwein.booktracker.core.book.usecases.GetBooksUseCase
+import com.sauerwein.booktracker.core.book.usecases.*
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -35,5 +34,15 @@ class UseCaseConfig {
     fun getBooksUseCase(bookRepository: BookRepository, currentUserProvider: CurrentUserProvider) = GetBooksUseCase(
         bookRepository = bookRepository,
         currentUserProvider = currentUserProvider,
+    )
+
+    @Bean
+    fun findBookByIsbnUseCase(bookMetadataSource: BookMetadataSource) = FindBookByIsbnUseCase(
+        bookMetadataSource = bookMetadataSource,
+    )
+
+    @Bean
+    fun searchCatalogUseCase(bookMetadataSource: BookMetadataSource) = SearchCatalogUseCase(
+        bookMetadataSource = bookMetadataSource,
     )
 }
