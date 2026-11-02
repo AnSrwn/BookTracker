@@ -2,7 +2,7 @@ package com.sauerwein.booktracker.core.book.models
 
 data class BookCandidate (
     val title: String,
-    val author: String,
+    val authors: List<Author>,
     val publisher: String?,
     val isbn: Isbn?,
     val publicationYear: Int?,

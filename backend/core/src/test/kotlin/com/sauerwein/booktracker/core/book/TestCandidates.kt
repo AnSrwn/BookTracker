@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.core.book
 
+import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
@@ -27,7 +28,7 @@ fun testCandidate(
     persistableInPublicCatalog: Boolean = true,
 ) = BookCandidate(
     title = title,
-    author = "Frank Herbert",
+    authors = listOf(Author("Frank Herbert", ref = null)),
     publisher = null,
     isbn = isbn,
     publicationYear = null,

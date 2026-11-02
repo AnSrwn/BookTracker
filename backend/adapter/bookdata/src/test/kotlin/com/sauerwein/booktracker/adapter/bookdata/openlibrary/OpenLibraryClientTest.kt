@@ -1,6 +1,8 @@
 package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
 import com.sauerwein.booktracker.adapter.bookdata.fixture
+import com.sauerwein.booktracker.adapter.bookdata.openLibraryRef
+import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
@@ -42,7 +44,7 @@ class OpenLibraryClientTest {
 
         server.verify()
         assertEquals("Eragon", candidate.title)
-        assertEquals("Christopher Paolini", candidate.author)
+        assertEquals(listOf(Author("Christopher Paolini", openLibraryRef("OL1425963A"))), candidate.authors)
         assertEquals("Alfred A. Knopf", candidate.publisher)
         assertEquals(Isbn.of("9780375826689"), candidate.isbn)
         assertEquals(2003, candidate.publicationYear)
@@ -78,6 +80,39 @@ class OpenLibraryClientTest {
         server.verify()
     }
 
+    /** Every author is one more request under the 1 req/s limit, so a long author list is cut off. */
+    @Test
+    fun `resolves at most the first two authors`() {
+        server.expect(requestTo("https://openlibrary.org/isbn/9780375826689.json"))
+            .andRespond(withSuccess(editionWithAuthors("OL1A", "OL2A", "OL3A"), MediaType.APPLICATION_JSON))
+        server.expect(requestTo("https://openlibrary.org/authors/OL1A.json"))
+            .andRespond(withSuccess("""{"name":"Terry Pratchett"}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("https://openlibrary.org/authors/OL2A.json"))
+            .andRespond(withSuccess("""{"name":"Neil Gaiman"}""", MediaType.APPLICATION_JSON))
+
+        val candidate = client.findByIsbn(Isbn.of("9780375826689"))!!
+
+        server.verify()
+        assertEquals(
+            listOf(Author("Terry Pratchett", openLibraryRef("OL1A")), Author("Neil Gaiman", openLibraryRef("OL2A"))),
+            candidate.authors)
+    }
+
+    @Test
+    fun `skips an author that cannot be resolved and keeps the rest`() {
+        server.expect(requestTo("https://openlibrary.org/isbn/9780375826689.json"))
+            .andRespond(withSuccess(editionWithAuthors("OL1A", "OL2A"), MediaType.APPLICATION_JSON))
+        server.expect(requestTo("https://openlibrary.org/authors/OL1A.json"))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND).contentType(MediaType.TEXT_HTML).body("<html></html>"))
+        server.expect(requestTo("https://openlibrary.org/authors/OL2A.json"))
+            .andRespond(withSuccess("""{"name":"Neil Gaiman"}""", MediaType.APPLICATION_JSON))
+
+        val candidate = client.findByIsbn(Isbn.of("9780375826689"))!!
+
+        server.verify()
+        assertEquals(listOf(Author("Neil Gaiman", openLibraryRef("OL2A"))), candidate.authors)
+    }
+
     @Test
     fun `throws on a server error instead of reporting a miss`() {
         server.expect(requestTo("https://openlibrary.org/isbn/9780375826689.json"))
@@ -105,7 +140,9 @@ class OpenLibraryClientTest {
         assertEquals(
             listOf("Eragon", "Brisingr", "Eragon & Eldest", "Eldest", "Inheritance"),
             candidates.map { it.title })
-        assertEquals(setOf("Christopher Paolini"), candidates.map { it.author }.toSet())
+        assertEquals(
+            setOf(listOf(Author("Christopher Paolini", openLibraryRef("OL1425963A")))),
+            candidates.map { it.authors }.toSet())
 
         val eragon = candidates[0]
         assertNull(eragon.sourceId)
@@ -122,11 +159,16 @@ class OpenLibraryClientTest {
         server.expect(path("/search.json"))
             .andExpect(query("q", "Vermächtnis der Drachen & mehr"))
             .andExpect(query("limit", "10"))
-            .andExpect(query("fields", "title,author_name,first_publish_year,cover_i,cover_edition_key"))
+            .andExpect(query("fields", "title,author_name,author_key,first_publish_year,cover_i,cover_edition_key"))
             .andRespond(withSuccess("""{"docs":[]}""", MediaType.APPLICATION_JSON))
 
         assertEquals(emptyList(), client.search("Vermächtnis der Drachen & mehr"))
         server.verify()
+    }
+
+    private fun editionWithAuthors(vararg ids: String): String {
+        val authors = ids.joinToString(",") { """{"key":"/authors/$it"}""" }
+        return """{"key":"/books/OL3685343M","title":"Good Omens","authors":[$authors]}"""
     }
 
     private fun path(expected: String) = RequestMatcher { request ->

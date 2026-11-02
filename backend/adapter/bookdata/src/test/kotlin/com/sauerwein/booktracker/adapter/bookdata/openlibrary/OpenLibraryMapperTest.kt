@@ -1,11 +1,15 @@
 package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
+import com.sauerwein.booktracker.adapter.bookdata.openLibraryRef
+import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+
+private val PAOLINI = Author("Christopher Paolini", openLibraryRef("OL1425963A"))
 
 class OpenLibraryMapperTest {
 
@@ -59,7 +63,8 @@ class OpenLibraryMapperTest {
     @Test
     fun `drops records without title or author`() {
         assertNull(map(edition.copy(title = " ")))
-        assertNull(mapper.toCandidate(edition, authorName = null))
+        assertNull(mapper.toCandidate(edition, authors = emptyList()))
+        assertNull(mapper.toCandidate(edition, authors = listOf(Author(" ", ref = null))))
         assertNull(mapper.toCandidate(OpenLibrarySearchDoc(title = "Eragon", authorName = emptyList())))
         assertNull(mapper.toCandidate(OpenLibrarySearchDoc(title = null, authorName = listOf("Paolini"))))
     }
@@ -71,11 +76,76 @@ class OpenLibraryMapperTest {
         val mapper = OpenLibraryMapper(descriptor)
         val doc = OpenLibrarySearchDoc(title = "Eragon", authorName = listOf("Christopher Paolini"))
 
-        listOfNotNull(mapper.toCandidate(edition, "Christopher Paolini"), mapper.toCandidate(doc)).forEach {
+        listOfNotNull(mapper.toCandidate(edition, listOf(PAOLINI)), mapper.toCandidate(doc)).forEach {
             assertEquals(descriptor.id, it.source)
             assertFalse(it.persistableInPublicCatalog)
         }
     }
 
-    private fun map(edition: OpenLibraryEdition) = mapper.toCandidate(edition, "Christopher Paolini")
+    @Test
+    fun `keeps every author of an edition in source order, trimmed and without duplicates`() {
+        val pratchett = Author("Terry Pratchett", openLibraryRef("OL25712A"))
+        val gaiman = Author("Neil Gaiman", openLibraryRef("OL1393655A"))
+
+        val candidate = mapper.toCandidate(
+            edition,
+            listOf(pratchett.copy(name = " Terry Pratchett "), Author("", ref = null), gaiman, pratchett),
+        )
+
+        assertEquals(listOf(pratchett, gaiman), candidate?.authors)
+    }
+
+    @Test
+    fun `pairs search author names with their keys`() {
+        val doc = OpenLibrarySearchDoc(
+            title = "Good Omens",
+            authorName = listOf("Terry Pratchett", "Neil Gaiman"),
+            authorKey = listOf("OL25712A", "OL1393655A"),
+        )
+
+        assertEquals(
+            listOf(Author("Terry Pratchett", openLibraryRef("OL25712A")), Author("Neil Gaiman", openLibraryRef("OL1393655A"))),
+            mapper.toCandidate(doc)?.authors,
+        )
+    }
+
+    /** Pairing by index across arrays of different length could credit the wrong person. */
+    @Test
+    fun `keeps search author names without keys when the arrays do not line up`() {
+        val doc = OpenLibrarySearchDoc(
+            title = "Good Omens",
+            authorName = listOf("Terry Pratchett", "Neil Gaiman"),
+            authorKey = listOf("OL1393655A"),
+        )
+
+        assertEquals(
+            listOf(Author("Terry Pratchett", ref = null), Author("Neil Gaiman", ref = null)),
+            mapper.toCandidate(doc)?.authors,
+        )
+    }
+
+    @Test
+    fun `drops a malformed search author key but keeps the name`() {
+        val doc = OpenLibrarySearchDoc(
+            title = "Good Omens",
+            authorName = listOf("Terry Pratchett", "Neil Gaiman"),
+            authorKey = listOf("/authors/../../admin", "OL1393655A"),
+        )
+
+        assertEquals(
+            listOf(Author("Terry Pratchett", ref = null), Author("Neil Gaiman", openLibraryRef("OL1393655A"))),
+            mapper.toCandidate(doc)?.authors,
+        )
+    }
+
+    /** After a field-by-field merge the candidate's source no longer says who issued an author key. */
+    @Test
+    fun `credits author keys to the descriptor's source`() {
+        val descriptor = OpenLibraryClient.DESCRIPTOR.copy(id = SourceId.of("other"))
+        val doc = OpenLibrarySearchDoc(title = "Eragon", authorName = listOf("Christopher Paolini"), authorKey = listOf("OL1425963A"))
+
+        assertEquals(SourceId.of("other"), OpenLibraryMapper(descriptor).toCandidate(doc)?.authors?.single()?.ref?.source)
+    }
+
+    private fun map(edition: OpenLibraryEdition) = mapper.toCandidate(edition, listOf(PAOLINI))
 }

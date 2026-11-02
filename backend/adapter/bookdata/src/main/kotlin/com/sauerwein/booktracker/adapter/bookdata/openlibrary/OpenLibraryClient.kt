@@ -3,18 +3,21 @@ package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 import com.sauerwein.booktracker.adapter.bookdata.resilience.BookSourceException
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.SourceDescriptor
+import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClient.RequestHeadersSpec.ConvertibleClientHttpResponse
 
 private const val SEARCH_LIMIT = 10
-private const val SEARCH_FIELDS = "title,author_name,first_publish_year,cover_i,cover_edition_key"
-private const val AUTHOR_KEY_PREFIX = "/authors/"
-private val AUTHOR_ID = Regex("OL[0-9]+A")
+private const val SEARCH_FIELDS = "title,author_name,author_key,first_publish_year,cover_i,cover_edition_key"
+
+/** Every author is one more request — and at 1 req/s one more second of scan latency. */
+private const val MAX_RESOLVED_AUTHORS = 2
 
 class OpenLibraryException(message: String) : BookSourceException(message)
 
@@ -52,19 +55,24 @@ class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource
             .exchange { _, response -> response.readJsonOrNull<OpenLibraryEdition>() }
             ?: return null
 
-        val authorName = editionResponse.authors?.firstOrNull()?.key?.let(::findAuthorName)
+        // An author that cannot be resolved is skipped; the mapper drops the record only if none is left.
+        // The keys are third-party data: only a validated id goes into a path, never the raw key
+        val authors = editionResponse.authors.orEmpty()
+            .mapNotNull { it.key?.let(::authorIdOrNull) }
+            .take(MAX_RESOLVED_AUTHORS)
+            .mapNotNull(::findAuthor)
 
-        return mapper.toCandidate(editionResponse, authorName)
+        return mapper.toCandidate(editionResponse, authors)
     }
 
-    private fun findAuthorName(authorKey: String): String? {
-        // The key comes from third-party data; only an id goes into the path, never the raw key
-        val authorId = authorKey.removePrefix(AUTHOR_KEY_PREFIX).takeIf { AUTHOR_ID.matches(it) } ?: return null
-
-        return restClient.get()
-            .uri("/authors/{id}.json", authorId)
+    private fun findAuthor(authorId: SourceRecordId): Author? {
+        val name = restClient.get()
+            .uri("/authors/{id}.json", authorId.value)
             .exchange { _, response -> response.readJsonOrNull<OpenLibraryAuthor>() }
             ?.name
+            ?: return null
+
+        return Author(name, mapper.authorRef(authorId))
     }
 
     /**

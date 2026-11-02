@@ -451,8 +451,8 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 **Open Library's `/isbn/{isbn}.json` returns an HTML error page on a miss, not JSON.** Branch on the status code; never parse the body blind.
 
 - `/isbn/{isbn}.json` answers with a `302` to the edition (`/books/OL…M.json`), so the client follows redirects explicitly.
-- An edition lists its authors **by key only** (`/authors/OL1425963A`). The name costs a second call, `/authors/{id}.json`, for the first author; without a name the record yields no candidate.
-- `/search.json` returns **works**, not editions: title, author names, `first_publish_year` and `cover_i`, but no ISBN, publisher or page count. A search hit is therefore a thin candidate — fine for picking the book, and the edition is pinned down on save. Its cover comes from `covers.openlibrary.org/b/id/{cover_i}-L.jpg?default=false`, its `sourceId` from `cover_edition_key` where present. `fields=` keeps the response to what is mapped.
+- An edition lists its authors **by key only** (`/authors/OL1425963A`). Each name costs one more call, `/authors/{id}.json`, so at most the first **two** are resolved — under the 1 req/s limit every author is another second of scan latency. An author that cannot be resolved is skipped; with no name left the record yields no candidate.
+- `/search.json` returns **works**, not editions: title, author names and keys (`author_name` / `author_key`, parallel arrays, paired only when their lengths match), `first_publish_year` and `cover_i`, but no ISBN, publisher or page count. A search hit is therefore a thin candidate — fine for picking the book, and the edition is pinned down on save. Its cover comes from `covers.openlibrary.org/b/id/{cover_i}-L.jpg?default=false`, its `sourceId` from `cover_edition_key` where present. `fields=` keeps the response to what is mapped.
 
 ```mermaid
 sequenceDiagram

@@ -5,7 +5,7 @@ import com.sauerwein.booktracker.core.book.models.BookCandidate
 
 fun BookCandidate.toResponse() = BookCandidateResponse(
     title = title,
-    author = author,
+    authors = authors.map { it.name },
     publisher = publisher,
     isbn = isbn?.value,
     publicationYear = publicationYear,

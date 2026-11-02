@@ -27,6 +27,7 @@ data class OpenLibrarySearchResponse(val docs: List<OpenLibrarySearchDoc>? = nul
 data class OpenLibrarySearchDoc(
     val title: String? = null,
     @JsonProperty("author_name") val authorName: List<String>? = null,
+    @JsonProperty("author_key") val authorKey: List<String>? = null,
     @JsonProperty("first_publish_year") val firstPublishYear: Int? = null,
     @JsonProperty("cover_i") val coverId: Long? = null,
     @JsonProperty("cover_edition_key") val coverEditionKey: String? = null,

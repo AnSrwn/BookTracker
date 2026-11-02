@@ -2,7 +2,7 @@ package com.sauerwein.booktracker.adapter.web.catalog.dtos
 
 data class BookCandidateResponse(
     val title: String,
-    val author: String,
+    val authors: List<String>,
     val publisher: String?,
     val isbn: String?,
     val publicationYear: Int?,
