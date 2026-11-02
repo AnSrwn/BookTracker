@@ -4,15 +4,14 @@ import com.sauerwein.booktracker.adapter.bookdata.fixture
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import io.github.resilience4j.ratelimiter.RateLimiter
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.RequestMatcher
-import org.springframework.test.web.client.match.MockRestRequestMatchers.header
-import org.springframework.test.web.client.match.MockRestRequestMatchers.method
-import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
+import org.springframework.test.web.client.match.MockRestRequestMatchers.*
 import org.springframework.test.web.client.response.MockRestResponseCreators.withStatus
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import java.net.URLDecoder
@@ -25,7 +24,7 @@ private const val USER_AGENT = "BookTracker/test (+test@example.org)"
 
 class OpenLibraryClientTest {
 
-    private val builder = OpenLibraryConfig.restClientBuilder(USER_AGENT)
+    private val builder = OpenLibraryConfig.restClientBuilder(USER_AGENT, RateLimiter.ofDefaults("test"))
     private val server = MockRestServiceServer.bindTo(builder).build()
     private val client = OpenLibraryClient(builder.build())
 
@@ -103,7 +102,9 @@ class OpenLibraryClientTest {
 
         val candidates = client.search("eragon")
 
-        assertEquals(listOf("Eragon", "Brisingr", "Eragon & Eldest", "Eldest", "Inheritance"), candidates.map { it.title })
+        assertEquals(
+            listOf("Eragon", "Brisingr", "Eragon & Eldest", "Eldest", "Inheritance"),
+            candidates.map { it.title })
         assertEquals(setOf("Christopher Paolini"), candidates.map { it.author }.toSet())
 
         val eragon = candidates[0]

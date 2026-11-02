@@ -6,18 +6,14 @@ import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
-import org.springframework.stereotype.Component
 
 /**
- * Hardcoded source, so the wiring can be verified without a network client:
- * module registration, component scanning, bean wiring, controller mapping,
- * error translation and auth all become testable on their own.
+ * Hardcoded source for tests that need a well-behaved provider without a network
+ * client. It proved the wiring in 9.2 and is no longer a bean.
  *
- * The OpenLibraryClient displaces it as the registered bean; this class stays
- * useful in tests afterwards. Its data is the real DNB record for that ISBN
- * (fixture `dnb-sru-isbn.xml`), so the shape matches what 9.8 will produce.
+ * Its data is the real DNB record for that ISBN (fixture `dnb-sru-isbn.xml`),
+ * so the shape matches what 9.8 will produce.
  */
-@Component
 class StubBookMetadataSource : BookMetadataSource {
 
     override val descriptor = SourceDescriptor(

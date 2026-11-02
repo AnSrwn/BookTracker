@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
+import com.sauerwein.booktracker.adapter.bookdata.resilience.BookSourceException
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.BookCandidate
@@ -15,11 +16,11 @@ private const val SEARCH_FIELDS = "title,author_name,first_publish_year,cover_i,
 private const val AUTHOR_KEY_PREFIX = "/authors/"
 private val AUTHOR_ID = Regex("OL[0-9]+A")
 
-class OpenLibraryException(message: String) : RuntimeException(message)
+class OpenLibraryException(message: String) : BookSourceException(message)
 
 /**
- * Not a `@Component` yet: the stub stays the registered source until 9.4 puts
- * the rate limiter in front of this client.
+ * Plain client: throttling sits in the RestClient (see OpenLibraryConfig), circuit
+ * breaking and metrics in the ResilientBookMetadataSource wrapped around it.
  */
 class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource {
 

@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.adapter.web.common.exception
 
+import com.sauerwein.booktracker.core.book.SourceUnavailableException
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.shared.exception.NotFoundException
 import com.sauerwein.booktracker.core.shared.exception.ValidationException
@@ -15,6 +16,8 @@ private const val DETAIL_VALIDATION_FAILED = "Request validation failed"
 
 private const val PROBLEM_PROPERTY_ERRORS = "errors"
 private const val PROBLEM_PROPERTY_CODE = "code"
+
+private const val CODE_SOURCE_UNAVAILABLE = "SourceUnavailable"
 
 /**
  * Translates expected errors into ProblemDetail responses.
@@ -61,5 +64,13 @@ class GlobalExceptionHandler {
     @ExceptionHandler(NotFoundException::class)
     fun handleNotFound(e: NotFoundException): ProblemDetail {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.message)
+    }
+
+    /** An outage is not a miss: a 404 here would send the app to the manual form for a book that exists. */
+    @ExceptionHandler(SourceUnavailableException::class)
+    fun handleSourceUnavailable(e: SourceUnavailableException): ProblemDetail {
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, e.message)
+        problem.setProperty(PROBLEM_PROPERTY_CODE, CODE_SOURCE_UNAVAILABLE)
+        return problem
     }
 }

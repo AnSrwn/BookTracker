@@ -18,6 +18,12 @@ booktracker:
     # Open Library asks for a contact User-Agent
     user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics
+
 springdoc:
   swagger-ui:
     oauth:

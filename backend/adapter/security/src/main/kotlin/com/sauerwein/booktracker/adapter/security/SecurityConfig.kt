@@ -36,6 +36,9 @@ class SecurityConfig {
             "/v3/api-docs.yaml",
             "/swagger-ui.html",
             "/swagger-ui/**",
+            // Health only; /actuator/metrics needs a token
+            "/actuator/health",
+            "/actuator/health/**",
         )
     }
 }

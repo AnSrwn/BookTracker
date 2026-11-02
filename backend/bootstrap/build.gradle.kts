@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":adapter:bookdata"))
 
     implementation(libs.spring.boot.starter)
+    implementation(libs.spring.boot.starter.actuator)
 
     developmentOnly(libs.spring.boot.docker.compose)
 

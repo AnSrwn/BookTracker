@@ -22,7 +22,7 @@ The BookTracker backend is a classic CRUD backend for the **BookTracker mobile a
 | Persistence | PostgreSQL, Spring Data JDBC, Flyway |
 | Auth | Keycloak (OIDC), Spring Security OAuth2 Resource Server |
 | External book data | Google Books API, DNB SRU, Open Library (ADR-007) |
-| Resilience | Resilience4j (rate limiter, circuit breaker, time limiter) |
+| Resilience | Resilience4j (rate limiter, circuit breaker); timeouts on the JDK `HttpClient` |
 | API docs | springdoc-openapi (OpenAPI 3, Swagger UI) |
 | Tests | JUnit 5, Spring Boot Test, Testcontainers (Postgres, Keycloak) |
 | Local infrastructure | Docker Compose (`spring-boot-docker-compose`) |
@@ -100,8 +100,8 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 | `:adapter:web` | HTTP API: controllers, request/response DTOs, validation, OpenAPI, errors → ProblemDetail | `core` | `starter-webmvc`, `jackson-module-kotlin` (Jackson 3), `starter-validation`, `springdoc-openapi-starter-webmvc-ui` |
 | `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `starter-flyway`, `flyway-database-postgresql`, `postgresql` (runtime) |
 | `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` | `core` | `starter-security-oauth2-resource-server` |
-| `:adapter:bookdata` | One client per public book source, the provider registry (capabilities, order, enablement from config), normalisation and field-level merge, rate limiting and circuit breaking *(planned)* | `core` | `spring-web` (`RestClient`), `resilience4j`, `jackson-module-kotlin`, `micrometer-core` |
-| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `spring-boot-docker-compose` (dev only), Testcontainers; planned: `starter-actuator` |
+| `:adapter:bookdata` | One client per public book source, the provider registry (capabilities, order, enablement from config), normalisation and field-level merge *(planned)*, rate limiting and circuit breaking | `core` | `spring-web` (`RestClient`), `resilience4j-ratelimiter`/`-circuitbreaker`/`-micrometer`, `jackson-module-kotlin`, `micrometer-core` |
+| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `starter-actuator`, `spring-boot-docker-compose` (dev only), Testcontainers |
 
 ### 3.2 Architecture Rules
 
@@ -278,7 +278,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 
 ### Security
 - Stateless, no session, CSRF disabled (pure token API).
-- Public: `/v3/api-docs/**`, `/swagger-ui/**`. Everything else requires a valid JWT. `/actuator/**` follows once Actuator is on the classpath.
+- Public: `/v3/api-docs/**`, `/swagger-ui/**`, `/actuator/health/**`. Everything else requires a valid JWT — including `/actuator/metrics`. Only `health` and `metrics` are exposed.
 - `issuer-uri`: `http://localhost:8180/realms/booktracker` (local), overridable via `BOOKTRACKER_ISSUER_URI`. JWKS keys are loaded lazily on the first token and cached.
 - The issuer URL must be a **stable DNS name** per environment. It is part of every token (`iss`), of the client's redirect URIs and of the Swagger UI configuration, so changing it later invalidates all issued tokens.
 - Roles: Keycloak claim `realm_access.roles` → Spring authorities `ROLE_<name>`.
@@ -294,6 +294,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 | Validation error | 400 |
 | `NotFoundException` | 404 |
 | Conflict / duplicate | 409 |
+| `SourceUnavailableException` (book source down, throttled or circuit open) | 503, `code: SourceUnavailable` |
 | Unexpected error | 500 (without internal details) |
 
 ### API Documentation
@@ -423,6 +424,8 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - Per-source timeouts (connect ~1 s, read ~2–3 s) and a Resilience4j circuit breaker: a slow Open Library must never hold up a fast Google response, and an outage degrades the result instead of hanging the request. Fan-out runs in parallel on virtual threads (`spring.threads.virtual.enabled`), so blocking clients cost no pool tuning.
 - **The catalog is the real rate limiter.** Resilience4j is a backstop against a bug or a spike burning the budget; it creates no headroom. If the limiter trips regularly, the fix is the hit rate, not a bigger bucket.
 - Micrometer counters per source (calls, errors, latency percentiles) from the first commit, so "do we need a cache yet" is a number rather than an argument.
+- **Two layers, because one port call can be several requests.** The rate limiter is a `ClientHttpRequestInterceptor` in each source's `RestClient`, so it throttles on the wire: an Open Library ISBN lookup is two requests (edition, then author), and a limiter around `findByIsbn` would let both through on one permit. Circuit breaker and metrics wrap the port instead (`ResilientBookMetadataSource`), since outcome — hit, miss, error, throttled, circuit open — only means something per lookup. Both are named after the descriptor id; the timer is `bookdata.source.requests` with tags `source`, `operation`, `outcome`.
+- **An outage is not a miss.** A source that fails throws `SourceUnavailableException` (503), never `null` — otherwise a timeout would send the scan flow to the manual form for a book that exists. Only the source's own failures are translated (provider exceptions, `RestClientException`, throttling, open circuit); anything else is a bug and stays a 500. With several sources, the composite (9.7) catches it per source and degrades.
 
 **The catalog grows by itself.** Every resolved record is upserted as a catalog row (`owner_id IS NULL`, ADR-006), so popular books end up local and external calls become the long tail. A record with no ISBN and no CC0 source is stored private to the user instead of entering the public catalog. Note what this is and is not: a side effect of lookups a human asked for, not a crawl. The distinction matters for the policy below.
 
