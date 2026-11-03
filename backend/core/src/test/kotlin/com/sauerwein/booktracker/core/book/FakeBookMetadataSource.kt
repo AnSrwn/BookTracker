@@ -2,6 +2,7 @@ package com.sauerwein.booktracker.core.book
 
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 
 /**
  * Records what it was asked for, so a test can assert which port method a use case chose —

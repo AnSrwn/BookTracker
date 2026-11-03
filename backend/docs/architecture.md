@@ -24,7 +24,7 @@ The BookTracker backend is a classic CRUD backend for the **BookTracker mobile a
 | External book data | Google Books API, DNB SRU, Open Library (ADR-007) |
 | Resilience | Resilience4j (rate limiter, circuit breaker); timeouts on the JDK `HttpClient` |
 | API docs | springdoc-openapi (OpenAPI 3, Swagger UI) |
-| Tests | JUnit 5, Spring Boot Test, Testcontainers (Postgres, Keycloak) |
+| Tests | JUnit 5, kotlin-test — unit tests only |
 | Local infrastructure | Docker Compose (`spring-boot-docker-compose`) |
 
 ## 2. System Context
@@ -101,7 +101,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 | `:adapter:persistence` | Implementation of the repository ports and `TransactionRunner`, DB entities, migrations | `core` | `starter-data-jdbc`, `starter-flyway`, `flyway-database-postgresql`, `postgresql` (runtime) |
 | `:adapter:security` | `SecurityFilterChain`, JWT → roles, `CurrentUserProvider` | `core` | `starter-security-oauth2-resource-server` |
 | `:adapter:bookdata` | One client per public book source, the provider registry (capabilities, order, enablement from config), normalisation and field-level merge *(planned)*, rate limiting and circuit breaking | `core` | `spring-web` (`RestClient`), `resilience4j-ratelimiter`/`-circuitbreaker`/`-micrometer`, `jackson-module-kotlin`, `micrometer-core` |
-| `bootstrap` | Assembly: main class, use case wiring, configuration, end-to-end tests | all | `spring-boot-starter`, `starter-actuator`, `spring-boot-docker-compose` (dev only), Testcontainers |
+| `bootstrap` | Assembly: main class, use case wiring, configuration | all | `spring-boot-starter`, `starter-actuator`, `spring-boot-docker-compose` (dev only) |
 
 ### 3.2 Architecture Rules
 
@@ -156,7 +156,7 @@ sequenceDiagram
 
 Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>` (e.g. `core.book`, `adapter.web.book`). The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
 
-Within a feature package, the code is grouped further into sub-packages: `models` and `usecases` in `core` (e.g. `core.book.models`, `core.book.usecases`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`). Cross-feature code lives in `shared` (core) or `common` (adapters), grouped by concern (`config`, `exception`).
+Within a feature package, the code is grouped further into sub-packages: `models`, `usecases` and, where a feature has its own errors, `exception` in `core` (e.g. `core.book.models`, `core.book.usecases`, `core.book.exception`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`), and **only ports**: plain data such as `SourceDescriptor` is a model, and logic built on the ports is a use case — including the ones only other use cases call (`ResolveIsbnUseCase`, `CatalogUpsertUseCase`). Cross-feature code lives in `shared` (core) or `common` (adapters), grouped by concern (`config`, `exception`).
 
 Files marked *(planned)* don't exist yet.
 
@@ -173,20 +173,27 @@ backend/
 │  │  └─ UserId.kt                            # Value object, Keycloak sub
 │  └─ book/
 │     ├─ BookRepository.kt                    # Outbound port (interface)
-│     ├─ BookMetadataSource.kt                # Outbound port, public book sources (planned)
-│     ├─ SourceDescriptor.kt                  # Provider id, capabilities, licence (planned)
+│     ├─ BookMetadataSource.kt                # Outbound port, public book sources
+│     ├─ exception/
+│     │  └─ SourceUnavailableException.kt     # A source could not answer → 503
 │     ├─ models/
 │     │  ├─ Book.kt                           # Domain model + BookId value object
-│     │  ├─ BookCandidate.kt                  # Unsaved search hit + source provenance (planned)
-│     │  ├─ SearchQuery.kt                    # Classifies ISBN vs. free text (planned)
-│     │  ├─ SourceId.kt                       # SourceId + SourceRecordId value classes (planned)
+│     │  ├─ BookCandidate.kt                  # Unsaved search hit + source provenance
+│     │  ├─ CatalogMapping.kt                 # Licence rule, candidate ↔ catalog row
+│     │  ├─ Author.kt                         # Name + optional SourceRef
+│     │  ├─ SearchQuery.kt                    # Classifies ISBN vs. free text
+│     │  ├─ SourceDescriptor.kt               # Provider id, capabilities, licence
+│     │  ├─ SourceId.kt, SourceRecordId.kt    # Value classes for provider and record keys
+│     │  ├─ SourceRef.kt                      # A key together with its issuing source
 │     │  └─ Isbn.kt                           # Value object, always a valid ISBN-13
 │     └─ usecases/
 │        ├─ AddBookUseCase.kt                 # Use case + AddBookCommand
 │        ├─ GetBookUseCase.kt
 │        ├─ GetBooksUseCase.kt
-│        ├─ SearchCatalogUseCase.kt           # Catalog first, external on thin recall (planned)
-│        └─ FindBookByIsbnUseCase.kt          # Scan flow, exact lookup (planned)
+│        ├─ SearchCatalogUseCase.kt           # Catalog first, external on thin recall
+│        ├─ FindBookByIsbnUseCase.kt          # Scan flow, exact lookup
+│        ├─ ResolveIsbnUseCase.kt             # Catalog first, then the source, then upsert
+│        └─ CatalogUpsertUseCase.kt           # Grows the catalog, licence permitting
 ├─ adapter/web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
 │  ├─ common/
 │  │  ├─ config/
@@ -218,7 +225,7 @@ backend/
 │     ├─ V1__init.sql
 │     ├─ V2__book.sql
 │     ├─ V3__book_owner.sql
-│     └─ V4__book_source.sql                  # Provenance + review_state (planned)
+│     └─ V4__book_source.sql                  # Provenance, review_state, book_author
 ├─ adapter/bookdata/src/main/kotlin/com/sauerwein/booktracker/adapter/bookdata/   # (planned)
 │  ├─ CompositeBookMetadataSource.kt          # Fan-out, skips providers by capability
 │  ├─ BookDataProperties.kt                   # Per-provider config, precedence lists
@@ -235,8 +242,7 @@ backend/
 │  ├─ main/kotlin/com/sauerwein/booktracker/
 │  │  ├─ BookTrackerApplication.kt
 │  │  └─ config/UseCaseConfig.kt              # @Bean per use case, Clock bean
-│  ├─ main/resources/application.yaml
-│  └─ test/kotlin/...                         # Integration tests (Testcontainers)
+│  └─ main/resources/application.yaml
 ├─ compose.yaml                               # Local dev: Postgres + Keycloak
 ├─ compose.prod.yaml                          # Production: app + Postgres (Keycloak runs separately)
 └─ keycloak/realm-booktracker.json            # Realm import for local development
@@ -307,7 +313,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 - User ownership via a nullable `owner_id` column (Keycloak `sub`, UUID, added in `V3__book_owner.sql`): set means private to that user, `NULL` means a public catalog entry. No user table, and no foreign key.
 - Because of that missing foreign key, Keycloak's user store is as critical as this database: if a realm is recreated, every `sub` changes and every row is orphaned. A production Keycloak therefore needs its own persistent database and backups.
 - Edition granularity (ADR-008): a row is one edition, so several rows per work are normal and expected. A nullable `work_key` (Open Library work key where known) rides along in the same migration, purely to make later grouping possible without touching accumulated rows.
-- Catalog provenance (`V4__book_source.sql`, planned): `source`, `source_id` (that system's own key — a DNB IDN like `1055026991`, an Open Library edition key like `OL7353617M`, a Google volume id), `source_fetched_at`, and `review_state`. A unique index on `(source, source_id) WHERE owner_id IS NULL` keeps the catalog free of duplicates when two users resolve the same book, which ISBN alone cannot do — some records carry none.
+- Catalog provenance (`V4__book_source.sql`): `source`, `source_id` (that system's own key — a DNB IDN like `1055026991`, an Open Library edition key like `OL7353617M`, a Google volume id), `source_fetched_at`, and `review_state`. A unique index on `(source, source_id) WHERE owner_id IS NULL` keeps the catalog free of duplicates when two users resolve the same book, which ISBN alone cannot do — some records carry none.
 - **`source` is an open vocabulary, not a closed enum:** plain `TEXT` with no constraint on the value set. Provider ids are lowercase, stable and never renamed — `manual`, `dnb`, `open_library`, `google_books`, and whatever comes later. The reason is that **the data outlives the providers**: a row written from DNB stays `source = 'dnb'` for as long as it exists, years after the client might be deleted. The column records history; which providers are *active* is configuration (see External Book Data below), not schema. A `CHECK` listing the known providers would turn every new provider into a migration and would make retiring one impossible.
 - Only data we are licensed to store may enter the **public** catalog, and that is written as an **allowlist**, so it fails closed:
   ```sql
@@ -427,7 +433,7 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - **Two layers, because one port call can be several requests.** The rate limiter is a `ClientHttpRequestInterceptor` in each source's `RestClient`, so it throttles on the wire: an Open Library ISBN lookup is two requests (edition, then author), and a limiter around `findByIsbn` would let both through on one permit. Circuit breaker and metrics wrap the port instead (`ResilientBookMetadataSource`), since outcome — hit, miss, error, throttled, circuit open — only means something per lookup. Both are named after the descriptor id; the timer is `bookdata.source.requests` with tags `source`, `operation`, `outcome`.
 - **An outage is not a miss.** A source that fails throws `SourceUnavailableException` (503), never `null` — otherwise a timeout would send the scan flow to the manual form for a book that exists. Only the source's own failures are translated (provider exceptions, `RestClientException`, throttling, open circuit); anything else is a bug and stays a 500. With several sources, the composite (9.7) catches it per source and degrades.
 
-**The catalog grows by itself.** Every resolved record is upserted as a catalog row (`owner_id IS NULL`, ADR-006), so popular books end up local and external calls become the long tail. A record with no ISBN and no CC0 source is stored private to the user instead of entering the public catalog. Note what this is and is not: a side effect of lookups a human asked for, not a crawl. The distinction matters for the policy below.
+**The catalog grows by itself.** Every record resolved by ISBN — and every one a user saves — is upserted as a catalog row (`owner_id IS NULL`, ADR-006), so popular books end up local and external calls become the long tail. ISBN lookups are catalog-first and only reach the sources on a miss; text search asks the sources only while the catalog has fewer than `booktracker.catalog.min-local-hits` matches. **Search hits are never upserted**: they are thin (Open Library returns works, without ISBN, publisher or pages) and nobody has chosen them yet. Only a record from a CC0 source with a stable `sourceId` enters the public catalog; anything else can only ever become a private book. Note what this is and is not: a side effect of lookups a human asked for, not a crawl. The distinction matters for the policy below.
 
 **Usage policy is a separate constraint from the rate limit — and Open Library's is the binding one.** Their API policy states the APIs are "not intended to serve as a bulk data backend or high-traffic commercial infrastructure" ([Open Library API docs](https://openlibrary.org/developers/api)); they are meant for mission-aligned projects and tools that look books up for humans. Heavy or bulk consumers are asked to use the monthly data dumps or to get in touch at `openlibrary@archive.org`, and violations may be answered with aggressive rate limiting or blocking.
 
@@ -483,7 +489,7 @@ sequenceDiagram
         Ext-->>Src: 0..n records per source
         Src->>Src: normalise ISBN, dedupe, merge per field
         Src-->>UC: candidates
-        UC->>Repo: upsert resolved CC0 records into the catalog
+        Note over UC,Repo: no upsert — search hits are thin and unchosen.<br/>ISBN lookups and saves upsert CC0 records instead
     end
     Ctrl-->>App: BookCandidateResponse[] (source + sourceId)
 ```
@@ -497,13 +503,14 @@ sequenceDiagram
 
 ### Tests
 
-| Level | Module | Tools |
+**Unit tests only**: no Spring context, no database or HTTP mock server, no containers in `./gradlew build`.
+
+| What | Module | Tools |
 |---|---|---|
-| Unit tests for use cases and domain rules | `core` | JUnit 5, kotlin-test, fakes for ports (incl. a `TransactionRunner` that just runs the block), no Spring |
-| Web slice | `:adapter:web` | `@WebMvcTest`, mocked use cases |
-| Persistence slice | `:adapter:persistence` | `@DataJdbcTest` + Testcontainers Postgres |
-| External sources slice | `:adapter:bookdata` | Recorded responses (`MockRestServiceServer` / WireMock). **No live network calls in `./gradlew build`** — a test loop would burn a daily budget |
-| End-to-end | `bootstrap` | `@SpringBootTest` + Testcontainers (Postgres, Keycloak) |
+| Use cases and domain rules | `core` | JUnit 5, kotlin-test, fakes for ports (incl. a `TransactionRunner` that just runs the block) |
+| Mappers and decorators | `:adapter:bookdata` | plain objects and fakes, e.g. the stub source behind `ResilientBookMetadataSource`. **No live network calls in `./gradlew build`** — a test loop would burn a daily budget |
+
+What only a real database or HTTP exchange can show — SQL, migrations, constraints, redirects, wiring — is checked by hand, against the dev stack or a throwaway copy of the dev database.
 
 ## 8. Architecture Decision Records (ADRs)
 
@@ -631,7 +638,7 @@ sequenceDiagram
 ### ADR-007: Book data from public sources, cached in the catalog
 
 - **Context:** Users add books by scanning an ISBN or by searching title/author. Maintaining a full catalog in our own database from the start was explicitly not wanted: it means a bulk import pipeline, tens of GB of storage and a monthly refresh story, all before the first user exists. So the data has to come from public sources at request time. Two constraints make that less obvious than it sounds. The free tiers are rate-limited **far** below what a naive pass-through proxy needs — Open Library allows 3 req/s per IP for identified callers, we hold ourselves to the 1 req/s non-identified default, and a backend is one IP for its whole user base. And the sources differ in what they are licensed for: Open Library and DNB title data are CC0, while the Google Books terms contain no caching clause, which makes persisting its records legally grey.
-- **Decision:** Three sources behind one port `BookMetadataSource` in `core`, implemented in a new module `:adapter:bookdata`. **Google Books finds the book; DNB and Open Library describe the one we keep** — Google's strength is recall and ranking, not field accuracy, and it is also the source we may not store. Every resolved CC0 record is upserted into the existing `book` catalog (`owner_id IS NULL`, ADR-006), so the catalog accumulates exactly the books users look up and most lookups never leave the backend. A `review_state` column is added at the same time and filtered on from day one, while still defaulting to `APPROVED`.
+- **Decision:** Three sources behind one port `BookMetadataSource` in `core`, implemented in a new module `:adapter:bookdata`. **Google Books finds the book; DNB and Open Library describe the one we keep** — Google's strength is recall and ranking, not field accuracy, and it is also the source we may not store. Every CC0 record resolved by ISBN or saved by a user is upserted into the existing `book` catalog (`owner_id IS NULL`, ADR-006), so the catalog accumulates exactly the books users look up and most lookups never leave the backend. A `review_state` column is added at the same time and filtered on from day one, while still defaulting to `APPROVED`.
 - **Decision, part two — the provider set is configuration, not structure.** Sources must be addable, removable and reorderable without touching the orchestration, because the set will change: DNB may go, a publisher API such as Penguin Random House may arrive. Three things make that hold. Each provider carries a `SourceDescriptor` (stable lowercase `id`, capabilities, scope, and whether its licence permits storing records publicly), so `CompositeBookMetadataSource` stays generic and skips providers that cannot serve a query. Precedence and enablement live in `application.yaml` as **first non-null wins over a configured order**, keyed by language where it matters. And `source` in the database is an **open vocabulary** (`TEXT`, no value `CHECK`), because the data outlives the providers — a row written from DNB keeps `source = 'dnb'` long after the client is gone. The licence rule is an **allowlist** (`owner_id IS NOT NULL OR source IN (…)`), so an unreviewed provider is search-only by default rather than publishable by oversight. In Kotlin the two identifiers are value classes — `SourceId` for the provider and `SourceRecordId` for its own key — not an enum and not bare `String`s.
 
 | | Hard-coded merge (`if` per source) | Config-driven order + descriptors ✅ | Plugin SPI / dynamic loading |

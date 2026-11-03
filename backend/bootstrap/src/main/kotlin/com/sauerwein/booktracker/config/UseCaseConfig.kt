@@ -3,7 +3,9 @@ package com.sauerwein.booktracker.config
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.usecases.*
+import com.sauerwein.booktracker.core.book.usecases.ResolveIsbnUseCase
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
@@ -37,12 +39,39 @@ class UseCaseConfig {
     )
 
     @Bean
-    fun findBookByIsbnUseCase(bookMetadataSource: BookMetadataSource) = FindBookByIsbnUseCase(
-        bookMetadataSource = bookMetadataSource,
+    fun catalogUpsertUseCase(bookRepository: BookRepository, clock: Clock) = CatalogUpsertUseCase(
+        bookRepository = bookRepository,
+        clock = clock,
     )
 
     @Bean
-    fun searchCatalogUseCase(bookMetadataSource: BookMetadataSource) = SearchCatalogUseCase(
+    fun resolveIsbnUseCase(
+        bookRepository: BookRepository,
+        bookMetadataSource: BookMetadataSource,
+        catalogUpsertUseCase: CatalogUpsertUseCase,
+    ) = ResolveIsbnUseCase(
+        bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
+        catalogUpsertUseCase = catalogUpsertUseCase,
+    )
+
+    @Bean
+    fun findBookByIsbnUseCase(resolveIsbnUseCase: ResolveIsbnUseCase) = FindBookByIsbnUseCase(
+        resolveIsbnUseCase = resolveIsbnUseCase,
+    )
+
+    @Bean
+    fun searchCatalogUseCase(
+        resolveIsbnUseCase: ResolveIsbnUseCase,
+        bookRepository: BookRepository,
+        bookMetadataSource: BookMetadataSource,
+        currentUserProvider: CurrentUserProvider,
+        @Value("\${booktracker.catalog.min-local-hits}") minLocalHits: Int,
+    ) = SearchCatalogUseCase(
+        resolveIsbnUseCase = resolveIsbnUseCase,
+        bookRepository = bookRepository,
+        bookMetadataSource = bookMetadataSource,
+        currentUserProvider = currentUserProvider,
+        minLocalHits = minLocalHits,
     )
 }

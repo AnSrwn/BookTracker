@@ -1,6 +1,6 @@
 package com.sauerwein.booktracker.adapter.web.common.exception
 
-import com.sauerwein.booktracker.core.book.SourceUnavailableException
+import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.shared.exception.NotFoundException
 import com.sauerwein.booktracker.core.shared.exception.ValidationException

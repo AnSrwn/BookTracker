@@ -17,6 +17,9 @@ booktracker:
   bookdata:
     # Open Library asks for a contact User-Agent
     user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
+  catalog:
+    # With at least this many local hits a text search does not ask the external sources
+    min-local-hits: 5
 
 management:
   endpoints:

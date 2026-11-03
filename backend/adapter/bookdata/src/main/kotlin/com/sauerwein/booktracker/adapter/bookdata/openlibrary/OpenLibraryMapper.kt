@@ -1,16 +1,18 @@
 package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
-import com.sauerwein.booktracker.core.book.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.book.models.SourceRef
 
 private const val COVERS_BASE_URL = "https://covers.openlibrary.org/b"
 private const val EDITION_KEY_PREFIX = "/books/"
 private const val AUTHOR_KEY_PREFIX = "/authors/"
+private const val WORK_KEY_PREFIX = "/works/"
 private val AUTHOR_ID = Regex("OL[0-9]+A")
+private val WORK_ID = Regex("OL[0-9]+W")
 private val YEAR = Regex("""(?<!\d)\d{4}(?!\d)""")
 
 class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
@@ -35,6 +37,7 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
             coverUrl = coverUrl,
             source = descriptor.id,
             sourceId = edition.key?.removePrefix(EDITION_KEY_PREFIX)?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
+            workKey = edition.works?.firstNotNullOfOrNull { ref -> ref.key?.let(::workIdOrNull) },
             persistableInPublicCatalog = descriptor.persistableInPublicCatalog,
         )
     }
@@ -57,6 +60,7 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
             coverUrl = doc.coverId?.let { "$COVERS_BASE_URL/id/$it-L.jpg?default=false" },
             source = descriptor.id,
             sourceId = doc.coverEditionKey?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
+            workKey = doc.key?.let(::workIdOrNull),
             persistableInPublicCatalog = descriptor.persistableInPublicCatalog,
         )
     }
@@ -76,3 +80,7 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
 /** Edition records prefix the key (`/authors/OL1425963A`), search docs do not. */
 internal fun authorIdOrNull(key: String): SourceRecordId? =
     key.removePrefix(AUTHOR_KEY_PREFIX).takeIf { AUTHOR_ID.matches(it) }?.let(::SourceRecordId)
+
+/** Stored, never put into a path — but still third-party data, so only a well-formed key is kept. */
+internal fun workIdOrNull(key: String): SourceRecordId? =
+    key.removePrefix(WORK_KEY_PREFIX).takeIf { WORK_ID.matches(it) }?.let(::SourceRecordId)

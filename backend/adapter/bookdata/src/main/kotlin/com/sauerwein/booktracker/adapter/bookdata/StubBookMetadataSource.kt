@@ -1,10 +1,10 @@
 package com.sauerwein.booktracker.adapter.bookdata
 
 import com.sauerwein.booktracker.core.book.BookMetadataSource
-import com.sauerwein.booktracker.core.book.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.book.models.SourceRef
@@ -42,6 +42,7 @@ class StubBookMetadataSource : BookMetadataSource {
         coverUrl = null,
         source = descriptor.id,
         sourceId = SourceRecordId("1055026991"),
+        workKey = null,
         persistableInPublicCatalog = descriptor.persistableInPublicCatalog,
     )
 

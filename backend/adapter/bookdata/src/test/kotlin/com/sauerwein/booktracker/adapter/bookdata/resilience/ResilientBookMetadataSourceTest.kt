@@ -2,7 +2,7 @@ package com.sauerwein.booktracker.adapter.bookdata.resilience
 
 import com.sauerwein.booktracker.adapter.bookdata.StubBookMetadataSource
 import com.sauerwein.booktracker.core.book.BookMetadataSource
-import com.sauerwein.booktracker.core.book.SourceUnavailableException
+import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId

@@ -13,18 +13,24 @@ data class Book(
     val id: BookId,
     val ownerId: UserId?,
     val title: String,
-    val author: String,
+    val authors: List<Author>,
     val publisher: String?,
     val isbn: Isbn?,
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
+    val source: SourceId,
+    val sourceId: SourceRecordId?,
+    val sourceFetchedAt: Instant?,
+    /** Open Library's work key where known (ADR-008) — an option for grouping later, read by nothing yet. */
+    val workKey: SourceRecordId?,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
     init {
         require(title.isNotBlank()) { "Title must not be blank" }
-        require(author.isNotBlank()) { "Author must not be blank" }
+        require(authors.isNotEmpty()) { "A book needs at least one author" }
+        require(authors.all { it.name.isNotBlank() }) { "Author names must not be blank" }
         require(pageCount == null || pageCount > 0) { "Page count must be positive" }
 
         if (coverUrl != null && !isHttpUrl(coverUrl)) {

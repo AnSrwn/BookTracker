@@ -5,7 +5,12 @@ val libs = the<VersionCatalogsExtension>().named("libs")
 kotlin {
     jvmToolchain(jdkVersion = libs.findVersion("java").get().requiredVersion.toInt())
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
+        freeCompilerArgs.addAll(
+            "-Xjsr305=strict",
+            "-Xannotation-default-target=param-property",
+            // Without it `List<@NotBlank String>` compiles, but Bean Validation never sees the element constraint
+            "-Xemit-jvm-type-annotations",
+        )
     }
 }
 

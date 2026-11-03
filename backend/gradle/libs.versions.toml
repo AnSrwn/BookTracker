@@ -28,15 +28,9 @@ resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-ci
 resilience4j-micrometer = { module = "io.github.resilience4j:resilience4j-micrometer", version.ref = "resilience4j" }
 
 # Test Dependencies
-spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
-spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
-spring-test = { module = "org.springframework:spring-test" }
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
-spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
-testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
-testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 
 # Gradle plugins (used by build-logic)
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }

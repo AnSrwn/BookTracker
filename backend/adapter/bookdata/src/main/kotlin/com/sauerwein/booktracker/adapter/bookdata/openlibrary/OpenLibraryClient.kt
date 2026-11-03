@@ -2,10 +2,10 @@ package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
 import com.sauerwein.booktracker.adapter.bookdata.resilience.BookSourceException
 import com.sauerwein.booktracker.core.book.BookMetadataSource
-import com.sauerwein.booktracker.core.book.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import org.springframework.http.HttpStatus
@@ -14,7 +14,7 @@ import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClient.RequestHeadersSpec.ConvertibleClientHttpResponse
 
 private const val SEARCH_LIMIT = 10
-private const val SEARCH_FIELDS = "title,author_name,author_key,first_publish_year,cover_i,cover_edition_key"
+private const val SEARCH_FIELDS = "key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key"
 
 /** Every author is one more request — and at 1 req/s one more second of scan latency. */
 private const val MAX_RESOLVED_AUTHORS = 2

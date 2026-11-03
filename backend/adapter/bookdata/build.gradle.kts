@@ -13,6 +13,4 @@ dependencies {
     implementation(libs.resilience4j.ratelimiter)
     implementation(libs.resilience4j.circuitbreaker)
     implementation(libs.resilience4j.micrometer)
-
-    testImplementation(libs.spring.test)
 }

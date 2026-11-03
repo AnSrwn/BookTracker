@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.adapter.bookdata.openLibraryRef
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -93,6 +94,16 @@ class OpenLibraryMapperTest {
         )
 
         assertEquals(listOf(pratchett, gaiman), candidate?.authors)
+    }
+
+    @Test
+    fun `keeps a well-formed work key and drops a malformed one`() {
+        val withWork = edition.copy(works = listOf(OpenLibraryKeyRef("/works/OL5819895W")))
+        val withJunk = edition.copy(works = listOf(OpenLibraryKeyRef("/works/../../admin")))
+
+        assertEquals(SourceRecordId("OL5819895W"), map(withWork)?.workKey)
+        assertNull(map(withJunk)?.workKey)
+        assertEquals(SourceRecordId("OL5819895W"), mapper.toCandidate(OpenLibrarySearchDoc(key = "/works/OL5819895W", title = "Eragon", authorName = listOf("Christopher Paolini")))?.workKey)
     }
 
     @Test

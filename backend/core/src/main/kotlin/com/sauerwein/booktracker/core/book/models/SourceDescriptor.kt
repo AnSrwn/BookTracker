@@ -1,6 +1,4 @@
-package com.sauerwein.booktracker.core.book
-
-import com.sauerwein.booktracker.core.book.models.SourceId
+package com.sauerwein.booktracker.core.book.models
 
 data class SourceDescriptor(
     val id: SourceId,

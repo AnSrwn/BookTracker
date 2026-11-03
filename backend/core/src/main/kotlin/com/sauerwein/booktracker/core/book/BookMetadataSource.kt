@@ -1,7 +1,9 @@
 package com.sauerwein.booktracker.core.book
 
+import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 
 /**
  * A miss is an empty list or `null`. A source that cannot answer at all throws

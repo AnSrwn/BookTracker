@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.core.book
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 
@@ -22,13 +23,14 @@ fun testDescriptor(
 
 fun testCandidate(
     title: String = "Dune",
+    author: String = "Frank Herbert",
     isbn: Isbn? = null,
     source: SourceId = SourceId.of("test_source"),
     sourceId: SourceRecordId? = SourceRecordId("test-record-1"),
     persistableInPublicCatalog: Boolean = true,
 ) = BookCandidate(
     title = title,
-    authors = listOf(Author("Frank Herbert", ref = null)),
+    authors = listOf(Author(author, ref = null)),
     publisher = null,
     isbn = isbn,
     publicationYear = null,
@@ -36,5 +38,6 @@ fun testCandidate(
     coverUrl = null,
     source = source,
     sourceId = sourceId,
+    workKey = null,
     persistableInPublicCatalog = persistableInPublicCatalog,
 )

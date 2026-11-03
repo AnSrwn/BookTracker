@@ -16,6 +16,7 @@ data class OpenLibraryEdition(
     @JsonProperty("isbn_13") val isbn13: List<String>? = null,
     @JsonProperty("isbn_10") val isbn10: List<String>? = null,
     val covers: List<Long>? = null,
+    val works: List<OpenLibraryKeyRef>? = null,
 )
 
 data class OpenLibraryKeyRef(val key: String? = null)
@@ -25,6 +26,8 @@ data class OpenLibraryAuthor(val name: String? = null)
 data class OpenLibrarySearchResponse(val docs: List<OpenLibrarySearchDoc>? = null)
 
 data class OpenLibrarySearchDoc(
+    /** The work key, `/works/OL…W` — search hits are works. */
+    val key: String? = null,
     val title: String? = null,
     @JsonProperty("author_name") val authorName: List<String>? = null,
     @JsonProperty("author_key") val authorKey: List<String>? = null,

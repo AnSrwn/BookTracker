@@ -1,6 +1,6 @@
 package com.sauerwein.booktracker.core.book.models
 
-data class BookCandidate (
+data class BookCandidate(
     val title: String,
     val authors: List<Author>,
     val publisher: String?,
@@ -10,5 +10,6 @@ data class BookCandidate (
     val coverUrl: String?,
     val source: SourceId,
     val sourceId: SourceRecordId?,
+    val workKey: SourceRecordId?,
     val persistableInPublicCatalog: Boolean,
 )
