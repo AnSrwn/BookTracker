@@ -14,6 +14,9 @@ class InMemoryBookRepository : BookRepository {
     private val books = mutableMapOf<BookId, Book>()
     private val links = mutableListOf<Link>()
 
+    /** Catalog rows a review set to PENDING or REJECTED; every catalog read skips them (`APPROVED_CATALOG`). */
+    private val unapproved = mutableSetOf<BookId>()
+
     private data class Link(val user: UserId, val bookId: BookId, val at: Instant)
 
     override fun addPrivateBook(book: Book) {
@@ -42,10 +45,11 @@ class InMemoryBookRepository : BookRepository {
         links += Link(user, bookId, at)
     }
 
-    override fun findCatalogByIsbn(isbn: Isbn): Book? = books.values.find { it.ownerId == null && it.isbn == isbn }
+    override fun findCatalogByIsbn(isbn: Isbn): Book? =
+        books.values.find { it.isApprovedCatalogRow() && it.isbn == isbn }
 
     override fun findCatalogBySource(source: SourceId, sourceId: SourceRecordId): Book? =
-        books.values.find { it.ownerId == null && it.source == source && it.sourceId == sourceId }
+        books.values.find { it.isApprovedCatalogRow() && it.source == source && it.sourceId == sourceId }
 
     override fun searchVisible(text: String, user: UserId, limit: Int): List<Book> {
         val words = text.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -59,17 +63,21 @@ class InMemoryBookRepository : BookRepository {
             .take(limit)
     }
 
-    override fun upsertCatalogEntry(book: Book): Book {
+    override fun upsertCatalogEntry(book: Book): Book? {
         val existing = books.values.find {
             it.ownerId == null && it.source == book.source && it.sourceId == book.sourceId
         }
+        // `DO UPDATE … WHERE review_state = 'APPROVED'`: a non-approved row stays untouched, nothing is returned
+        if (existing != null && existing.id in unapproved) return null
         val stored = existing?.let { book.copy(id = it.id, createdAt = it.createdAt) } ?: book
         requireUniqueCatalogIsbn(stored)
         books[stored.id] = stored
         return stored
     }
 
-    private fun Book.isVisibleTo(user: UserId) = ownerId == null || ownerId == user
+    private fun Book.isVisibleTo(user: UserId) = isApprovedCatalogRow() || ownerId == user
+
+    private fun Book.isApprovedCatalogRow() = ownerId == null && id !in unapproved
 
     /** `ux_book_catalog_isbn`: private books may repeat an ISBN, catalog rows may not. */
     private fun requireUniqueCatalogIsbn(book: Book) {
@@ -87,6 +95,13 @@ class InMemoryBookRepository : BookRepository {
             requireUniqueCatalogIsbn(it)
             books[it.id] = it
         }
+    }
+
+    /** Test-only: a catalog row a review set to PENDING or REJECTED. */
+    fun seedUnapproved(book: Book) {
+        require(book.ownerId == null) { "Only catalog rows have a review state" }
+        seed(book)
+        unapproved += book.id
     }
 
     /** Test-only view of everything stored, to assert that nothing was written. */

@@ -93,6 +93,19 @@ All 8 findings checked against the code and valid. Decisions taken with the user
 
 Verified 2026-11-16: 127 unit tests green; manual run as `testuser` — search `eldest` returned UUIDs for stored and `h1.` ids for addable hits and wrote no row (13 → 13); adding a hit stored the full edition (*Eldest*, Knopf, 679 pages) and linked it (14 rows); again → 409; tampered or garbage id → 404; scan still returns a UUID.
 
+## Second code review of PR #10 (2026-11-16, after c7713e2)
+
+The first review's 8 findings were confirmed fixed. Both new findings are valid:
+
+| # | Finding | Handling |
+|---|---------|----------|
+| 1 | Adding a hit could link a user to a non-approved catalog row: the upsert's `DO UPDATE` ignored `review_state`, overwrote the row and returned it | `DO UPDATE … WHERE book.review_state = 'APPROVED'`; no row returned → `upsertCatalogEntry` returns `null` → add is 404, scan returns the candidate without id. **Also affected the scan path**, which the review did not mention |
+| 2 | `BookCandidateResponse` still exposed `source`/`sourceId`, contradicting D28 | both fields removed. **The 503 detail also named the provider** ("Book source open_library is unavailable"), which the review did not mention; now a fixed text, the source stays in the log |
+
+Open question, deferred to the review workflow (roadmap §11): `findLibrary` has no review filter, so a linked book stays in a user's books if its row is later rejected.
+
+Verified 2026-11-16: 131 unit tests green; SQL by hand in a rolled-back transaction (a `PENDING` row is neither returned nor changed by the upsert); manual run as `testuser` — search and scan responses carry no `source`/`sourceId`, adding a hit (*Brisingr*, 800 pages) still gives 201.
+
 ## Requirements
 
 | ID | Requirement | Step | Source |

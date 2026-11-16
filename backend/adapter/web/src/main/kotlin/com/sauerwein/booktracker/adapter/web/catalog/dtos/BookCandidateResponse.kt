@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.adapter.web.catalog.dtos
 
+/** No provenance: which source a hit came from never leaves the backend (D28). The [id] is all the app needs. */
 data class BookCandidateResponse(
     /**
      * Opaque. A stored book's UUID, or a signed id for a search hit not stored yet. With [kind]
@@ -16,6 +17,4 @@ data class BookCandidateResponse(
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
-    val source: String,
-    val sourceId: String?,
 )

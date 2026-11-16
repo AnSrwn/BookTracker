@@ -18,6 +18,7 @@ private const val PROBLEM_PROPERTY_ERRORS = "errors"
 private const val PROBLEM_PROPERTY_CODE = "code"
 
 private const val CODE_SOURCE_UNAVAILABLE = "SourceUnavailable"
+private const val SOURCE_UNAVAILABLE_DETAIL = "A book source is unavailable. Try again later."
 
 /**
  * Translates expected errors into ProblemDetail responses.
@@ -69,7 +70,8 @@ class GlobalExceptionHandler {
     /** An outage is not a miss: a 404 here would send the app to the manual form for a book that exists. */
     @ExceptionHandler(SourceUnavailableException::class)
     fun handleSourceUnavailable(e: SourceUnavailableException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, e.message)
+        // Fixed text: which source failed is logged (ResilientBookMetadataSource), never sent to the app
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, SOURCE_UNAVAILABLE_DETAIL)
         problem.setProperty(PROBLEM_PROPERTY_CODE, CODE_SOURCE_UNAVAILABLE)
         return problem
     }

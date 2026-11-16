@@ -212,7 +212,7 @@ backend/
 │  └─ catalog/                                # Discovery, separate from the library (planned)
 │     ├─ CatalogController.kt                 # /catalog/search, /catalog/isbn/{isbn}
 │     ├─ CatalogWebMapper.kt
-│     └─ dtos/BookCandidateResponse.kt        # Carries source + sourceId
+│     └─ dtos/BookCandidateResponse.kt        # Opaque id + kind; no provenance
 ├─ adapter/persistence/src/main/
 │  ├─ kotlin/com/sauerwein/booktracker/adapter/persistence/
 │  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner (planned)
@@ -300,7 +300,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 | Validation error | 400 |
 | `NotFoundException` | 404 |
 | Conflict / duplicate | 409 |
-| `SourceUnavailableException` (book source down, throttled or circuit open) | 503, `code: SourceUnavailable` |
+| `SourceUnavailableException` (book source down, throttled or circuit open) | 503, `code: SourceUnavailable`, fixed detail without the source's name (it is logged instead) |
 | Unexpected error | 500 (without internal details) |
 
 ### API Documentation
@@ -321,7 +321,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
   ```
   A denylist (`source <> 'google_books'`) expresses the same rule but fails in the opposite direction: add a provider and forget the rule, and its records flow silently into a table every user reads. With the allowlist, the same oversight rejects the first insert — loudly, during development, at the moment someone would be reading that provider's licence anyway. A new provider is therefore search-only until it is deliberately promoted — and promoting one *does* take a migration to extend the constraint. That asymmetry is the point: adding a provider is free, while granting it space in the catalog every user reads is a reviewed act with a paper trail. Same instinct as ADR-006 deleting `findAll()` outright and rule 6 putting the visibility check where it cannot be skipped: shape it so the mistake is impossible, not merely discouraged.
 - The authority for that decision is the provider's `SourceDescriptor` (see below), checked in the use case so it is unit-testable; the `CHECK` is the backstop that catches a code path nobody thought of.
-- Catalog reads filter `review_state = 'APPROVED'` from that migration on, even though everything is inserted as `APPROVED` today. Introducing a review workflow later is then a changed default plus an admin endpoint — not an audit of every read path. The name is deliberately not `status`: ADR-006 rejected a single `status` field for the user's *relationship* to a book, and two adjacent columns of that name would confuse both.
+- Catalog reads filter `review_state = 'APPROVED'` from that migration on, even though everything is inserted as `APPROVED` today. Writes respect it too: the catalog upsert refreshes approved rows only (`DO UPDATE … WHERE review_state = 'APPROVED'`), so a scan or an add never overwrites a review decision, and a record held by a non-approved row is neither handed out by id nor linked to anyone. Introducing a review workflow later is then a changed default plus an admin endpoint — not an audit of every read path. The name is deliberately not `status`: ADR-006 rejected a single `status` field for the user's *relationship* to a book, and two adjacent columns of that name would confuse both.
 
 ### External Book Data
 
@@ -400,7 +400,7 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - Field-quality ordering is empirical. Config makes *changing* the order cheap; it does not tell you what the order should be. That knowledge comes from looking at records.
 - Fusing relevance-ranked results degrades as providers multiply. With 2–4 sources and ISBN-based dedupe it is fine; at eight it becomes a ranking problem in its own right. That is the scaling limit of this design.
 
-**Discovery is separate from the user's books.** `GET /api/v1/books` lists the user's own books; discovery lives under `/api/v1/catalog`. Different latency, different caching, different response shape — a hit is a candidate, not yet one of the user's books, so it gets its own DTO. Every hit the app may add carries an opaque `id` and `kind: CATALOG`; the caller's own books come back as `PRIVATE`. The `id` of a stored book is its UUID; a hit not stored yet gets a **signed hit id** (`h1.<payload>.<tag>`, HMAC-SHA256 over source and record id, `CatalogHitIds`), so the app hands back one kind of id and cannot forge or alter it. The id is signed, not encrypted: it is opaque to the app, not secret. A hit without an id cannot be added, only copied into a private book.
+**Discovery is separate from the user's books.** `GET /api/v1/books` lists the user's own books; discovery lives under `/api/v1/catalog`. Different latency, different caching, different response shape — a hit is a candidate, not yet one of the user's books, so it gets its own DTO. Every hit the app may add carries an opaque `id` and `kind: CATALOG`; the caller's own books come back as `PRIVATE`. The `id` of a stored book is its UUID; a hit not stored yet gets a **signed hit id** (`h1.<payload>.<tag>`, HMAC-SHA256 over source and record id, `CatalogHitIds`), so the app hands back one kind of id and cannot forge or alter it. The id is signed, not encrypted: it is opaque to the app, not secret. **Provenance never leaves the backend**: responses carry no `source`/`sourceId`, and errors do not name a provider either, so the app cannot start to depend on one. A hit without an id cannot be added, only copied into a private book.
 
 | Endpoint | Purpose | Miss behaviour |
 |---|---|---|

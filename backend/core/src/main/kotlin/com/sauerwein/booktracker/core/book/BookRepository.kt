@@ -36,9 +36,11 @@ interface BookRepository {
     fun searchVisible(text: String, user: UserId, limit: Int): List<Book>
 
     /**
-     * Inserts a public catalog row, or refreshes the one with the same `(source, sourceId)`.
-     * Returns the stored row: on a refresh it keeps the existing id and `createdAt`.
-     * Throws `ConflictException` if another catalog row already holds the ISBN.
+     * Inserts a public catalog row, or refreshes the approved one with the same `(source, sourceId)`.
+     * Returns the stored row: on a refresh it keeps the existing id and `createdAt`. Returns `null`,
+     * changing nothing, if that record exists as a row that is not approved — a review decision
+     * is never overwritten by a lookup. Throws `ConflictException` if another catalog row already
+     * holds the ISBN.
      */
-    fun upsertCatalogEntry(book: Book): Book
+    fun upsertCatalogEntry(book: Book): Book?
 }

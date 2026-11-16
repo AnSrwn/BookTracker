@@ -146,6 +146,27 @@ class AddCatalogBookUseCaseTest {
         assertEquals(listOf(existing), bookRepository.stored())
     }
 
+    /** Review of PR #10: no add path may link a user to a row a review has not approved, or overwrite it. */
+    @Test
+    fun `a hit whose record exists as a non-approved row is not found and leaves the row alone`() {
+        val pending = testBook(ownerId = null, title = "Eragon (under review)", isbn = ISBN, source = TEST_SOURCE, sourceId = RECORD)
+        bookRepository.seedUnapproved(pending)
+        val source = FakeBookMetadataSource(recordResult = testCandidate(title = "Eragon", isbn = ISBN))
+
+        assertFailsWith<NotFoundException> { useCase(source)(hit) }
+        assertEquals(listOf(pending), bookRepository.stored())
+        assertTrue(bookRepository.links().isEmpty())
+    }
+
+    @Test
+    fun `a non-approved catalog book cannot be added by its id either`() {
+        val pending = testBook(ownerId = null)
+        bookRepository.seedUnapproved(pending)
+
+        assertFailsWith<NotFoundException> { useCase()(CatalogBookRef.Stored(pending.id)) }
+        assertTrue(bookRepository.links().isEmpty())
+    }
+
     @Test
     fun `a search hit the source no longer knows is not found`() {
         val source = FakeBookMetadataSource(recordResult = null)

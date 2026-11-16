@@ -23,7 +23,5 @@ fun BookCandidate.toResponse(hitIds: CatalogHitIds): BookCandidateResponse {
         publicationYear = publicationYear,
         pageCount = pageCount,
         coverUrl = coverUrl,
-        source = source.value,
-        sourceId = sourceId?.value,
     )
 }

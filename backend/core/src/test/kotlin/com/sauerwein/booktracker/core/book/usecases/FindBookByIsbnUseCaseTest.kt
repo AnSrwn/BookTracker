@@ -111,7 +111,7 @@ class FindBookByIsbnUseCaseTest {
     fun `still returns the candidate when the catalog write conflicts`() {
         val candidate = testCandidate(isbn = isbn)
         val conflicting = object : BookRepository by bookRepository {
-            override fun upsertCatalogEntry(book: Book): Book =
+            override fun upsertCatalogEntry(book: Book): Book? =
                 throw ConflictException(code = "DuplicateBook", message = "taken")
         }
         val resolver = ResolveIsbnUseCase(
@@ -121,6 +121,20 @@ class FindBookByIsbnUseCaseTest {
         )
 
         assertEquals(candidate, FindBookByIsbnUseCase(resolver)(isbn))
+    }
+
+    /** Review of PR #10: a scan must neither overwrite a review decision nor hand out the id of an unapproved row. */
+    @Test
+    fun `leaves a non-approved row alone and returns the candidate without an id`() {
+        val pending = testBook(ownerId = null, title = "Eragon (under review)", source = SourceId.of("test_source"), sourceId = SourceRecordId("test-record-1"))
+        bookRepository.seedUnapproved(pending)
+        val source = FakeBookMetadataSource(isbnResult = testCandidate(title = "Eragon", isbn = isbn))
+
+        val candidate = useCase(source)(isbn)
+
+        assertNull(candidate.bookId)
+        assertEquals("Eragon", candidate.title)
+        assertEquals(listOf(pending), bookRepository.stored())
     }
 
     /** The scan flow relies on this: a 404 is what sends the app to the manual form. */

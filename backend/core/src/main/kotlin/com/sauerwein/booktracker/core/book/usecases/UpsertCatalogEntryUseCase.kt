@@ -10,8 +10,9 @@ import java.util.*
 
 /**
  * Grows the catalog from a resolved candidate and returns the catalog row that now stands for
- * it. Returns `null`, writing nothing, when the licence forbids it — or when another row holds
- * the ISBN but is not readable (not approved): the lookup must not fail over a side effect.
+ * it. Returns `null`, writing nothing, when the licence forbids it, when the record exists as a
+ * row that is not approved, or when another row holds the ISBN but is not approved: nothing
+ * unapproved is ever handed out, and a lookup must not fail over a side effect.
  */
 class UpsertCatalogEntryUseCase(
     private val bookRepository: BookRepository,

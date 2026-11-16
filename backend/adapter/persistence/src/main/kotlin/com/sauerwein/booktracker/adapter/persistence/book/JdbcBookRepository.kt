@@ -43,6 +43,9 @@ private const val UPSERT_CATALOG_ENTRY = """
         source_fetched_at = EXCLUDED.source_fetched_at,
         work_key = EXCLUDED.work_key,
         updated_at = EXCLUDED.updated_at
+    -- Only approved rows are refreshed. A PENDING or REJECTED row stays as the review left it,
+    -- and RETURNING then yields no row: the caller gets nothing to link or hand out.
+    WHERE book.review_state = 'APPROVED'
     RETURNING id, created_at"""
 
 private const val DELETE_AUTHORS = "DELETE FROM book_author WHERE book_id = :bookId"
@@ -111,11 +114,11 @@ class JdbcBookRepository(
         return bookQueries.searchVisible(text = text, ownerId = user.value, limit = limit).map { it.toDomain() }
     }
 
-    override fun upsertCatalogEntry(book: Book): Book = write(conflict = DUPLICATE_BOOK) {
+    override fun upsertCatalogEntry(book: Book): Book? = write(conflict = DUPLICATE_BOOK) {
         require(book.ownerId == null) { "Only public catalog rows are upserted" }
         val entity = book.toEntity()
 
-        val (id, createdAt) = jdbcClient.sql(UPSERT_CATALOG_ENTRY)
+        val stored = jdbcClient.sql(UPSERT_CATALOG_ENTRY)
             .param("id", entity.id)
             .param("title", entity.title)
             .param("publisher", entity.publisher)
@@ -130,11 +133,14 @@ class JdbcBookRepository(
             .param("createdAt", Timestamp.from(entity.createdAt))
             .param("updatedAt", Timestamp.from(entity.updatedAt))
             .query { rs, _ -> rs.getObject("id", UUID::class.java) to rs.getTimestamp("created_at").toInstant() }
-            .single()
+            .optional()
 
-        replaceAuthors(bookId = id, authors = entity.authors)
-        book.copy(id = BookId(id), createdAt = createdAt)
-    }
+        // Empty: the record exists as a non-approved row, which this write must not touch
+        listOfNotNull(stored.orElse(null)?.let { (id, createdAt) ->
+            replaceAuthors(bookId = id, authors = entity.authors)
+            book.copy(id = BookId(id), createdAt = createdAt)
+        })
+    }.singleOrNull()
 
     private fun replaceAuthors(bookId: UUID, authors: List<BookAuthorEntity>) {
         jdbcClient.sql(DELETE_AUTHORS).param("bookId", bookId).update()

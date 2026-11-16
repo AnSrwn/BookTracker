@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import com.sauerwein.booktracker.core.book.testBook
 import com.sauerwein.booktracker.core.book.testCandidate
 import java.time.Clock
 import java.time.Instant
@@ -74,5 +75,15 @@ class UpsertCatalogEntryUseCaseTest {
 
         assertEquals(existing, result)
         assertEquals(listOf("Eragon"), bookRepository.stored().map { it.title })
+    }
+
+    /** A review decision is never overwritten by a lookup. */
+    @Test
+    fun `leaves a non-approved row with the same record untouched and returns nothing`() {
+        val pending = testBook(ownerId = null, title = "Dune (under review)", source = SourceId.of("test_source"), sourceId = SourceRecordId("test-record-1"))
+        bookRepository.seedUnapproved(pending)
+
+        assertNull(upsertCatalogEntryUseCase(testCandidate(title = "Dune")))
+        assertEquals(listOf(pending), bookRepository.stored())
     }
 }
