@@ -106,6 +106,18 @@ Open question, deferred to the review workflow (roadmap §11): `findLibrary` has
 
 Verified 2026-11-16: 131 unit tests green; SQL by hand in a rolled-back transaction (a `PENDING` row is neither returned nor changed by the upsert); manual run as `testuser` — search and scan responses carry no `source`/`sourceId`, adding a hit (*Brisingr*, 800 pages) still gives 201.
 
+## Third code review of PR #10 (2026-11-16, after ee55e03)
+
+The earlier 10 findings were confirmed fixed. All three new findings are valid:
+
+| # | Finding | Handling |
+|---|---------|----------|
+| 1 | A hit whose record exists only as a non-approved row still gets an addable id; the add then costs an Open Library call and ends in 404 | **deferred** to the review workflow (user, 2026-11-16): latent until something sets `PENDING`/`REJECTED`, and a fix now costs a DB lookup per search hit. Roadmap §11 |
+| 2 | `GET /books` lists a linked non-approved book, `GET /books/{id}` returns 404 for it | **deferred** to the review workflow (user, 2026-11-16): the review workflow defines what `PENDING`/`REJECTED` mean for books users already have. Roadmap §11 |
+| 3 | `listOfNotNull(…).singleOrNull()` worked around `write()`'s `T : Any` bound | fixed: `write<T>`, the upsert returns `Book?` directly |
+
+Verified 2026-11-16: build green; a scan of an ISBN not yet stored (`9780375840548`) on port 8080 stored the row with its author and returned its UUID.
+
 ## Requirements
 
 | ID | Requirement | Step | Source |

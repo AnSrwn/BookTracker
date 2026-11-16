@@ -136,11 +136,11 @@ class JdbcBookRepository(
             .optional()
 
         // Empty: the record exists as a non-approved row, which this write must not touch
-        listOfNotNull(stored.orElse(null)?.let { (id, createdAt) ->
+        stored.orElse(null)?.let { (id, createdAt) ->
             replaceAuthors(bookId = id, authors = entity.authors)
             book.copy(id = BookId(id), createdAt = createdAt)
-        })
-    }.singleOrNull()
+        }
+    }
 
     private fun replaceAuthors(bookId: UUID, authors: List<BookAuthorEntity>) {
         jdbcClient.sql(DELETE_AUTHORS).param("bookId", bookId).update()
@@ -160,7 +160,7 @@ class JdbcBookRepository(
      * public-catalog allowlist above all — means a code path skipped the licence rule: a bug,
      * so it stays a 500.
      */
-    private fun <T : Any> write(conflict: Conflict, block: () -> T): T {
+    private fun <T> write(conflict: Conflict, block: () -> T): T {
         try {
             return transactionTemplate.execute { block() }
         } catch (_: DuplicateKeyException) {
