@@ -12,7 +12,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
 
-data class AddBookCommand(
+data class CreatePrivateBookCommand(
     val title: String,
     val authors: List<String>,
     val publisher: String?,
@@ -22,12 +22,18 @@ data class AddBookCommand(
     val coverUrl: String?,
 )
 
-class AddBookUseCase(
+/**
+ * A book only its owner sees — entered by hand, or prefilled by the app from a catalog book
+ * the user wanted to change. Catalog books themselves are never edited (D15). `manual` here
+ * means "data the user owns", not strictly "typed in". Private books are independent of each
+ * other, so the same ISBN may exist several times.
+ */
+class CreatePrivateBookUseCase(
     private val bookRepository: BookRepository,
     private val currentUserProvider: CurrentUserProvider,
     private val clock: Clock,
 ) {
-    operator fun invoke(command: AddBookCommand): Book {
+    operator fun invoke(command: CreatePrivateBookCommand): Book {
         val now = Instant.now(clock).truncatedTo(ChronoUnit.MICROS)
 
         val book = Book(
@@ -48,7 +54,7 @@ class AddBookUseCase(
             updatedAt = now,
         )
 
-        bookRepository.add(book)
+        bookRepository.addPrivateBook(book)
 
         return book
     }

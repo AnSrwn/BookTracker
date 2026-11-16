@@ -15,7 +15,12 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.*
 
-private const val CONFLICT_CODE = "DuplicateBook"
+private const val DUPLICATE_BOOK = "DuplicateBook"
+private const val ALREADY_IN_LIBRARY = "AlreadyInLibrary"
+
+private const val INSERT_LINK = """
+    INSERT INTO user_book (user_id, book_id, created_at)
+    VALUES (:userId, :bookId, :createdAt)"""
 
 /** Spring Data JDBC has no upsert; ON CONFLICT is the native-SQL path ADR-002 leaves open. */
 private const val UPSERT_CATALOG_ENTRY = """
@@ -52,21 +57,42 @@ class JdbcBookRepository(
     private val jdbcClient: JdbcClient,
     private val transactionTemplate: TransactionTemplate,
 ) : BookRepository {
-    override fun add(book: Book) {
-        write { template.insert(book.toEntity()) }
+    override fun addPrivateBook(book: Book) {
+        val owner = requireNotNull(book.ownerId) { "A private book needs an owner" }
+        write(conflictCode = DUPLICATE_BOOK) {
+            template.insert(book.toEntity())
+            insertLink(userId = owner.value, bookId = book.id.value, createdAt = book.createdAt)
+        }
     }
 
     override fun update(book: Book) {
-        write { template.update(book.toEntity()) }
+        write(conflictCode = DUPLICATE_BOOK) { template.update(book.toEntity()) }
     }
 
     override fun findVisible(id: BookId, user: UserId): Book? {
         return bookQueries.findVisible(id = id.value, ownerId = user.value)?.toDomain()
     }
 
-    override fun findAllVisible(user: UserId): List<Book> {
-        return bookQueries.findAllVisible(ownerId = user.value).map { it.toDomain() }
+    override fun findLibrary(user: UserId): List<Book> {
+        return bookQueries.findLibrary(userId = user.value).map { it.toDomain() }
     }
+
+    override fun addToLibrary(user: UserId, bookId: BookId, at: Instant) {
+        write(conflictCode = ALREADY_IN_LIBRARY) {
+            insertLink(
+                userId = user.value,
+                bookId = bookId.value,
+                createdAt = at
+            )
+        }
+    }
+
+    private fun insertLink(userId: UUID, bookId: UUID, createdAt: Instant): Int =
+        jdbcClient.sql(INSERT_LINK)
+            .param("userId", userId)
+            .param("bookId", bookId)
+            .param("createdAt", Timestamp.from(createdAt))
+            .update()
 
     override fun findCatalogByIsbn(isbn: Isbn): Book? {
         return bookQueries.findCatalogByIsbn(isbn = isbn.value)?.toDomain()
@@ -76,7 +102,7 @@ class JdbcBookRepository(
         return bookQueries.searchVisible(text = text, ownerId = user.value, limit = limit).map { it.toDomain() }
     }
 
-    override fun upsertCatalogEntry(book: Book): Book = write {
+    override fun upsertCatalogEntry(book: Book): Book = write(conflictCode = DUPLICATE_BOOK) {
         require(book.ownerId == null) { "Only public catalog rows are upserted" }
         val entity = book.toEntity()
 
@@ -119,11 +145,15 @@ class JdbcBookRepository(
      * public-catalog allowlist above all — means a code path skipped the licence rule: a bug,
      * so it stays a 500.
      */
-    private fun <T : Any> write(block: () -> T): T {
+    private fun <T : Any> write(conflictCode: String, block: () -> T): T {
         try {
-            return transactionTemplate.execute { block() }!!
-        } catch (e: DuplicateKeyException) {
-            throw ConflictException(code = CONFLICT_CODE, message = "Book already exists in this collection")
+            return transactionTemplate.execute { block() }
+        } catch (_: DuplicateKeyException) {
+            val message = when (conflictCode) {
+                ALREADY_IN_LIBRARY -> "Book is already in your books"
+                else -> "Book already exists in this collection"
+            }
+            throw ConflictException(code = conflictCode, message = message)
         }
     }
 }

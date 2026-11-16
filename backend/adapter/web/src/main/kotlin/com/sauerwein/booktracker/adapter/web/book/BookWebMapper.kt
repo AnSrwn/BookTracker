@@ -1,12 +1,13 @@
 package com.sauerwein.booktracker.adapter.web.book
 
 import com.sauerwein.booktracker.adapter.web.book.dtos.BookResponse
-import com.sauerwein.booktracker.adapter.web.book.dtos.CreateBookRequest
+import com.sauerwein.booktracker.adapter.web.book.dtos.CreatePrivateBookRequest
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.usecases.AddBookCommand
+import com.sauerwein.booktracker.core.book.models.kind
+import com.sauerwein.booktracker.core.book.usecases.CreatePrivateBookCommand
 
-fun CreateBookRequest.toCommand() = AddBookCommand(
+fun CreatePrivateBookRequest.toCommand() = CreatePrivateBookCommand(
     title = title,
     authors = authors.map { it.trim() },
     publisher = publisher,
@@ -18,6 +19,7 @@ fun CreateBookRequest.toCommand() = AddBookCommand(
 
 fun Book.toResponse() = BookResponse(
     id = id.value,
+    kind = kind.name,
     title = title,
     authors = authors.map { it.name },
     publisher = publisher,

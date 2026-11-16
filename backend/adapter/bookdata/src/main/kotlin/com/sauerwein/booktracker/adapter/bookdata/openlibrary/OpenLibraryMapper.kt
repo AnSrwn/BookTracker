@@ -1,11 +1,6 @@
 package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
-import com.sauerwein.booktracker.core.book.models.Author
-import com.sauerwein.booktracker.core.book.models.BookCandidate
-import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceDescriptor
-import com.sauerwein.booktracker.core.book.models.SourceRecordId
-import com.sauerwein.booktracker.core.book.models.SourceRef
+import com.sauerwein.booktracker.core.book.models.*
 
 private const val COVERS_BASE_URL = "https://covers.openlibrary.org/b"
 private const val EDITION_KEY_PREFIX = "/books/"
@@ -13,6 +8,7 @@ private const val AUTHOR_KEY_PREFIX = "/authors/"
 private const val WORK_KEY_PREFIX = "/works/"
 private val AUTHOR_ID = Regex("OL[0-9]+A")
 private val WORK_ID = Regex("OL[0-9]+W")
+private val EDITION_ID = Regex("OL[0-9]+M")
 private val YEAR = Regex("""(?<!\d)\d{4}(?!\d)""")
 
 class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
@@ -42,24 +38,36 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
         )
     }
 
+    /**
+     * A search hit, made edition-level by the matching edition Open Library returns with it:
+     * `sourceId`, ISBN and title all come from that one edition, so a stored row never pairs
+     * one edition's key with another's ISBN. Without an edition the hit has neither — it stays
+     * a suggestion and never enters the catalog. The edition may be another language's (the
+     * *Brisingr* work matched a Russian *Eragon* edition); its own title keeps the row consistent.
+     */
     fun toCandidate(doc: OpenLibrarySearchDoc): BookCandidate? {
-        val title = doc.title?.takeIf { it.isNotBlank() } ?: return null
+        val edition = doc.editions?.docs?.firstOrNull()
+        val title = (edition?.title ?: doc.title)?.takeIf { it.isNotBlank() } ?: return null
         val names = doc.authorName.orEmpty()
         // Parallel arrays: if the lengths differ, pairing by index could credit the wrong person
         val keys = doc.authorKey?.takeIf { it.size == names.size }
-        val authors = names.mapIndexed { index, name -> Author(name, keys?.get(index)?.let(::authorIdOrNull)?.let(::authorRef)) }
+        val authors =
+            names.mapIndexed { index, name -> Author(name, keys?.get(index)?.let(::authorIdOrNull)?.let(::authorRef)) }
         val cleanAuthors = cleanAuthors(authors).ifEmpty { return null }
+        val sourceId =
+            edition?.key?.removePrefix(EDITION_KEY_PREFIX)?.takeIf { EDITION_ID.matches(it) }?.let(::SourceRecordId)
 
         return BookCandidate(
             title = title,
             authors = cleanAuthors,
             publisher = null,
-            isbn = null,
+            // An ISBN without the edition key it belongs to would be a guess
+            isbn = sourceId?.let { firstValidIsbn(edition.isbn?.sortedByDescending { it.length }) },
             publicationYear = doc.firstPublishYear,
             pageCount = null,
             coverUrl = doc.coverId?.let { "$COVERS_BASE_URL/id/$it-L.jpg?default=false" },
             source = descriptor.id,
-            sourceId = doc.coverEditionKey?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
+            sourceId = sourceId,
             workKey = doc.key?.let(::workIdOrNull),
             persistableInPublicCatalog = descriptor.persistableInPublicCatalog,
         )

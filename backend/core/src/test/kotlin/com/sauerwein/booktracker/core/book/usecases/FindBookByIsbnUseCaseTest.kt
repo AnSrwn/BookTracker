@@ -1,14 +1,7 @@
 package com.sauerwein.booktracker.core.book.usecases
 
-import com.sauerwein.booktracker.core.book.BookRepository
-import com.sauerwein.booktracker.core.book.FakeBookMetadataSource
-import com.sauerwein.booktracker.core.book.InMemoryBookRepository
-import com.sauerwein.booktracker.core.book.models.Book
-import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceId
-import com.sauerwein.booktracker.core.book.models.SourceRecordId
-import com.sauerwein.booktracker.core.book.testBook
-import com.sauerwein.booktracker.core.book.testCandidate
+import com.sauerwein.booktracker.core.book.*
+import com.sauerwein.booktracker.core.book.models.*
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.shared.exception.NotFoundException
 import com.sauerwein.booktracker.core.user.UserId
@@ -25,16 +18,19 @@ class FindBookByIsbnUseCaseTest {
         ResolveIsbnUseCase(
             bookRepository = bookRepository,
             bookMetadataSource = source,
-            catalogUpsertUseCase = CatalogUpsertUseCase(bookRepository, Clock.systemUTC()),
+            upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(bookRepository, Clock.systemUTC()),
         )
     )
 
     @Test
-    fun `returns the candidate the source found`() {
+    fun `returns the candidate the source found, with the id of the catalog row it became`() {
         val candidate = testCandidate(title = "Eragon", isbn = isbn)
         val source = FakeBookMetadataSource(isbnResult = candidate)
 
-        assertEquals(candidate, useCase(source)(isbn))
+        val found = useCase(source)(isbn)
+
+        val stored = bookRepository.stored().single()
+        assertEquals(candidate.copy(bookId = stored.id, kind = BookKind.CATALOG), found)
     }
 
     @Test
@@ -50,13 +46,23 @@ class FindBookByIsbnUseCaseTest {
     @Test
     fun `answers from the catalog without asking the source`() {
         val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = isbn))
-        bookRepository.add(testBook(ownerId = null, title = "Eragon", isbn = isbn, source = SourceId.of("dnb"), sourceId = SourceRecordId("1055026991")))
+        bookRepository.seed(
+            testBook(
+                ownerId = null,
+                title = "Eragon",
+                isbn = isbn,
+                source = SourceId.of("dnb"),
+                sourceId = SourceRecordId("1055026991")
+            )
+        )
 
         val candidate = useCase(source)(isbn)
 
         assertEquals("Eragon", candidate.title)
         assertEquals(SourceId.of("dnb"), candidate.source)
         assertTrue(candidate.persistableInPublicCatalog)
+        assertEquals(bookRepository.stored().single().id, candidate.bookId)
+        assertEquals(BookKind.CATALOG, candidate.kind)
         assertEquals(emptyList(), source.lookedUpIsbns)
     }
 
@@ -76,11 +82,13 @@ class FindBookByIsbnUseCaseTest {
 
     @Test
     fun `returns a candidate from a non-persistable source without storing it`() {
-        val candidate = testCandidate(isbn = isbn, source = SourceId.of("google_books"), persistableInPublicCatalog = false)
+        val candidate =
+            testCandidate(isbn = isbn, source = SourceId.of("google_books"), persistableInPublicCatalog = false)
         val source = FakeBookMetadataSource(isbnResult = candidate)
         val findBookByIsbn = useCase(source)
 
         assertEquals(candidate, findBookByIsbn(isbn))
+        assertNull(candidate.bookId)
         assertTrue(bookRepository.stored().isEmpty())
 
         findBookByIsbn(isbn)
@@ -90,7 +98,7 @@ class FindBookByIsbnUseCaseTest {
     /** A user's private row is their edit, not a source's answer. */
     @Test
     fun `ignores a private book with that ISBN`() {
-        bookRepository.add(testBook(ownerId = UserId(UUID.randomUUID()), isbn = isbn))
+        bookRepository.seed(testBook(ownerId = UserId(UUID.randomUUID()), isbn = isbn))
         val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = isbn))
 
         useCase(source)(isbn)
@@ -109,7 +117,7 @@ class FindBookByIsbnUseCaseTest {
         val resolver = ResolveIsbnUseCase(
             bookRepository = conflicting,
             bookMetadataSource = FakeBookMetadataSource(isbnResult = candidate),
-            catalogUpsertUseCase = CatalogUpsertUseCase(conflicting, Clock.systemUTC()),
+            upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(conflicting, Clock.systemUTC()),
         )
 
         assertEquals(candidate, FindBookByIsbnUseCase(resolver)(isbn))

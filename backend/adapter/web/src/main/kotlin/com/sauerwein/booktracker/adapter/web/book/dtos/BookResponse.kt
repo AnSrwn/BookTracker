@@ -5,6 +5,8 @@ import java.util.*
 
 data class BookResponse(
     val id: UUID,
+    /** `CATALOG` (shared by everyone, read-only) or `PRIVATE` (the caller's own). */
+    val kind: String,
     val title: String,
     val authors: List<String>,
     val publisher: String?,

@@ -33,5 +33,20 @@ data class OpenLibrarySearchDoc(
     @JsonProperty("author_key") val authorKey: List<String>? = null,
     @JsonProperty("first_publish_year") val firstPublishYear: Int? = null,
     @JsonProperty("cover_i") val coverId: Long? = null,
-    @JsonProperty("cover_edition_key") val coverEditionKey: String? = null,
+    /**
+     * The one edition of this work that best matches the query, requested via
+     * `fields=editions,editions.key,…`. Search hits become edition-level through it: its key and
+     * ISBNs belong together, unlike the work-level `isbn` list, which mixes every edition.
+     */
+    val editions: OpenLibrarySearchEditions? = null,
+)
+
+data class OpenLibrarySearchEditions(val docs: List<OpenLibrarySearchEdition>? = null)
+
+data class OpenLibrarySearchEdition(
+    /** `/books/OL…M` */
+    val key: String? = null,
+    val title: String? = null,
+    /** ISBN-10 and ISBN-13 mixed, as Open Library lists them. */
+    val isbn: List<String>? = null,
 )

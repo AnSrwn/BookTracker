@@ -21,15 +21,15 @@ class GetBookUseCaseTest {
     @Test
     fun `returns an own book`() {
         val book = testBook(ownerId = userA)
-        bookRepository.add(book)
+        bookRepository.addPrivateBook(book)
 
         assertEquals(book, getBookUseCase(book.id))
     }
 
     @Test
-    fun `returns a book without an owner, because it is part of the public catalog`() {
+    fun `returns a catalog book even when the user never added it`() {
         val book = testBook(ownerId = null)
-        bookRepository.add(book)
+        bookRepository.seed(book)
 
         assertEquals(book, getBookUseCase(book.id))
     }
@@ -37,7 +37,7 @@ class GetBookUseCaseTest {
     @Test
     fun `reports another user's book as not found instead of forbidden`() {
         val book = testBook(ownerId = userB)
-        bookRepository.add(book)
+        bookRepository.addPrivateBook(book)
 
         assertFailsWith<NotFoundException> { getBookUseCase(book.id) }
     }

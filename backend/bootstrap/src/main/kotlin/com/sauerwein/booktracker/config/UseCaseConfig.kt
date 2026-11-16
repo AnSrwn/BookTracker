@@ -3,7 +3,6 @@ package com.sauerwein.booktracker.config
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.usecases.*
-import com.sauerwein.booktracker.core.book.usecases.ResolveIsbnUseCase
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -16,14 +15,25 @@ class UseCaseConfig {
     fun clock(): Clock = Clock.systemUTC()
 
     @Bean
-    fun addBookUseCase(
+    fun createPrivateBookUseCase(
         bookRepository: BookRepository,
         currentUserProvider: CurrentUserProvider,
         clock: Clock,
-    ) = AddBookUseCase(
+    ) = CreatePrivateBookUseCase(
         bookRepository = bookRepository,
         currentUserProvider = currentUserProvider,
-        clock = clock
+        clock = clock,
+    )
+
+    @Bean
+    fun addCatalogBookUseCase(
+        bookRepository: BookRepository,
+        currentUserProvider: CurrentUserProvider,
+        clock: Clock,
+    ) = AddCatalogBookUseCase(
+        bookRepository = bookRepository,
+        currentUserProvider = currentUserProvider,
+        clock = clock,
     )
 
     @Bean
@@ -39,7 +49,7 @@ class UseCaseConfig {
     )
 
     @Bean
-    fun catalogUpsertUseCase(bookRepository: BookRepository, clock: Clock) = CatalogUpsertUseCase(
+    fun upsertCatalogEntryUseCase(bookRepository: BookRepository, clock: Clock) = UpsertCatalogEntryUseCase(
         bookRepository = bookRepository,
         clock = clock,
     )
@@ -48,11 +58,11 @@ class UseCaseConfig {
     fun resolveIsbnUseCase(
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
-        catalogUpsertUseCase: CatalogUpsertUseCase,
+        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
     ) = ResolveIsbnUseCase(
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
-        catalogUpsertUseCase = catalogUpsertUseCase,
+        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
     )
 
     @Bean
@@ -63,12 +73,14 @@ class UseCaseConfig {
     @Bean
     fun searchCatalogUseCase(
         resolveIsbnUseCase: ResolveIsbnUseCase,
+        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
         currentUserProvider: CurrentUserProvider,
-        @Value("\${booktracker.catalog.min-local-hits}") minLocalHits: Int,
+        @Value($$"${booktracker.catalog.min-local-hits}") minLocalHits: Int,
     ) = SearchCatalogUseCase(
         resolveIsbnUseCase = resolveIsbnUseCase,
+        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
         currentUserProvider = currentUserProvider,

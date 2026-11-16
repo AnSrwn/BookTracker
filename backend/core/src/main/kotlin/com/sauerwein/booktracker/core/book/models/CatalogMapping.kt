@@ -45,4 +45,6 @@ fun Book.toCandidate() = BookCandidate(
     sourceId = sourceId,
     workKey = workKey,
     persistableInPublicCatalog = ownerId == null,
+    bookId = id,
+    kind = kind,
 )

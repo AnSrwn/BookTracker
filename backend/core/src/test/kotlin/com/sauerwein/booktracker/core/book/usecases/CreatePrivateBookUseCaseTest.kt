@@ -1,8 +1,10 @@
 package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
+import com.sauerwein.booktracker.core.book.models.BookKind
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.kind
 import com.sauerwein.booktracker.core.user.UserId
 import java.time.Clock
 import java.time.Instant
@@ -10,15 +12,15 @@ import java.time.ZoneOffset
 import java.util.*
 import kotlin.test.*
 
-class AddBookUseCaseTest {
+class CreatePrivateBookUseCaseTest {
 
     private val userId = UserId(UUID.randomUUID())
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-01-01T10:00:00.123456789Z"), ZoneOffset.UTC)
-    private val addBookUseCase =
-        AddBookUseCase(bookRepository = bookRepository, currentUserProvider = { userId }, clock = clock)
+    private val createPrivateBook =
+        CreatePrivateBookUseCase(bookRepository = bookRepository, currentUserProvider = { userId }, clock = clock)
 
-    private val command = AddBookCommand(
+    private val command = CreatePrivateBookCommand(
         title = "Dune",
         authors = listOf("Frank Herbert", "Brian Herbert"),
         publisher = "Ace",
@@ -30,14 +32,37 @@ class AddBookUseCaseTest {
 
     @Test
     fun `saves the book and returns it`() {
-        val book = addBookUseCase(command)
+        val book = createPrivateBook(command)
 
         assertEquals(book, bookRepository.findVisible(book.id, userId))
     }
 
     @Test
+    fun `puts the new book into the owner's books`() {
+        val book = createPrivateBook(command)
+
+        assertEquals(listOf(userId to book.id), bookRepository.links())
+        assertEquals(listOf(book), bookRepository.findLibrary(userId))
+    }
+
+    @Test
+    fun `is a private book`() {
+        assertEquals(BookKind.PRIVATE, createPrivateBook(command).kind)
+    }
+
+    /** Private books are independent entities (D14): a second one with the same ISBN is a new book, not a conflict. */
+    @Test
+    fun `accepts a second private book with the same ISBN`() {
+        val first = createPrivateBook(command)
+        val second = createPrivateBook(command.copy(title = "Dune, annotated"))
+
+        assertNotEquals(first.id, second.id)
+        assertEquals(setOf(first, second), bookRepository.findLibrary(userId).toSet())
+    }
+
+    @Test
     fun `copies all fields from the command`() {
-        val book = addBookUseCase(command)
+        val book = createPrivateBook(command)
 
         assertEquals("Dune", book.title)
         assertEquals(listOf("Frank Herbert", "Brian Herbert"), book.authors.map { it.name })
@@ -50,7 +75,7 @@ class AddBookUseCaseTest {
 
     @Test
     fun `marks a book entered by hand as manual, with no source record`() {
-        val book = addBookUseCase(command)
+        val book = createPrivateBook(command)
 
         assertEquals(SourceId.MANUAL, book.source)
         assertNull(book.sourceId)
@@ -59,14 +84,14 @@ class AddBookUseCaseTest {
 
     @Test
     fun `sets the owner to the current user`() {
-        val book = addBookUseCase(command)
+        val book = createPrivateBook(command)
 
         assertEquals(userId, book.ownerId)
     }
 
     @Test
     fun `sets createdAt and updatedAt to the current time, truncated to microseconds`() {
-        val book = addBookUseCase(command)
+        val book = createPrivateBook(command)
 
         val expected = Instant.parse("2026-01-01T10:00:00.123456Z")
         assertEquals(expected, book.createdAt)
@@ -75,8 +100,8 @@ class AddBookUseCaseTest {
 
     @Test
     fun `generates a new id for each book`() {
-        val first = addBookUseCase(command)
-        val second = addBookUseCase(command.copy(isbn = null))
+        val first = createPrivateBook(command)
+        val second = createPrivateBook(command)
 
         assertNotEquals(first.id, second.id)
         assertEquals(2, bookRepository.stored().size)
@@ -85,7 +110,7 @@ class AddBookUseCaseTest {
     @Test
     fun `rejects a blank title and saves nothing`() {
         assertFailsWith<IllegalArgumentException> {
-            addBookUseCase(command.copy(title = " "))
+            createPrivateBook(command.copy(title = " "))
         }
 
         assertTrue(bookRepository.stored().isEmpty())

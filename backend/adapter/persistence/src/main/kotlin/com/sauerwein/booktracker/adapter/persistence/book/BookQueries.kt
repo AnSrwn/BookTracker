@@ -19,8 +19,14 @@ private const val MATCHES_TEXT = """
 
 interface BookQueries : Repository<BookEntity, UUID> {
 
-    @Query("SELECT * FROM book WHERE $VISIBLE")
-    fun findAllVisible(@Param("ownerId") ownerId: UUID): List<BookEntity>
+    /** Only what is linked to the user — never the whole catalog, unlike [VISIBLE]. */
+    @Query(
+        """SELECT book.* FROM book
+           JOIN user_book ub ON ub.book_id = book.id
+           WHERE ub.user_id = :userId
+           ORDER BY ub.created_at DESC"""
+    )
+    fun findLibrary(@Param("userId") userId: UUID): List<BookEntity>
 
     @Query("SELECT * FROM book WHERE id = :id AND $VISIBLE")
     fun findVisible(@Param("id") id: UUID, @Param("ownerId") ownerId: UUID): BookEntity?
