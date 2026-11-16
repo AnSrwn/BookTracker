@@ -1,9 +1,11 @@
 package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.BookRepository
+import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
 import java.time.Clock
 import java.time.Instant
@@ -12,7 +14,7 @@ import java.util.*
 
 data class AddBookCommand(
     val title: String,
-    val author: String,
+    val authors: List<String>,
     val publisher: String?,
     val isbn: Isbn?,
     val publicationYear: Int?,
@@ -32,12 +34,16 @@ class AddBookUseCase(
             id = BookId(UUID.randomUUID()),
             ownerId = currentUserProvider.currentUserId(),
             title = command.title,
-            author = command.author,
+            authors = command.authors.map { Author(name = it, ref = null) },
             publisher = command.publisher,
             isbn = command.isbn,
             publicationYear = command.publicationYear,
             pageCount = command.pageCount,
             coverUrl = command.coverUrl,
+            source = SourceId.MANUAL,
+            sourceId = null,
+            sourceFetchedAt = null,
+            workKey = null,
             createdAt = now,
             updatedAt = now,
         )

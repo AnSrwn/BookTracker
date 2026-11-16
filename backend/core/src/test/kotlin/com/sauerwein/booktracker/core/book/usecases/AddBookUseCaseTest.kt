@@ -2,6 +2,7 @@ package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.user.UserId
 import java.time.Clock
 import java.time.Instant
@@ -19,7 +20,7 @@ class AddBookUseCaseTest {
 
     private val command = AddBookCommand(
         title = "Dune",
-        author = "Frank Herbert",
+        authors = listOf("Frank Herbert", "Brian Herbert"),
         publisher = "Ace",
         isbn = Isbn.of("978-0-441-17271-9"),
         publicationYear = 1965,
@@ -39,12 +40,21 @@ class AddBookUseCaseTest {
         val book = addBookUseCase(command)
 
         assertEquals("Dune", book.title)
-        assertEquals("Frank Herbert", book.author)
+        assertEquals(listOf("Frank Herbert", "Brian Herbert"), book.authors.map { it.name })
         assertEquals("Ace", book.publisher)
         assertEquals("9780441172719", book.isbn?.value)
         assertEquals(1965, book.publicationYear)
         assertEquals(896, book.pageCount)
         assertEquals("https://example.com/dune.jpg", book.coverUrl)
+    }
+
+    @Test
+    fun `marks a book entered by hand as manual, with no source record`() {
+        val book = addBookUseCase(command)
+
+        assertEquals(SourceId.MANUAL, book.source)
+        assertNull(book.sourceId)
+        assertNull(book.sourceFetchedAt)
     }
 
     @Test
@@ -66,7 +76,7 @@ class AddBookUseCaseTest {
     @Test
     fun `generates a new id for each book`() {
         val first = addBookUseCase(command)
-        val second = addBookUseCase(command)
+        val second = addBookUseCase(command.copy(isbn = null))
 
         assertNotEquals(first.id, second.id)
         assertEquals(2, bookRepository.stored().size)

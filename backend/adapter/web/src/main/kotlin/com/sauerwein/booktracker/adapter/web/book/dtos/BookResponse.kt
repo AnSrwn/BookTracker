@@ -6,7 +6,7 @@ import java.util.*
 data class BookResponse(
     val id: UUID,
     val title: String,
-    val author: String,
+    val authors: List<String>,
     val publisher: String?,
     val isbn: String?,
     val publicationYear: Int?,

@@ -1,0 +1,298 @@
+{
+  "numFound": 45,
+  "start": 0,
+  "numFoundExact": true,
+  "num_found": 45,
+  "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+  "q": "eragon",
+  "offset": null,
+  "docs": [
+    {
+      "author_key": [
+        "OL1425963A"
+      ],
+      "author_name": [
+        "Christopher Paolini"
+      ],
+      "cover_height": 500,
+      "cover_i": 13921600,
+      "cover_width": 329,
+      "ebook_access": "borrowable",
+      "edition_count": 91,
+      "first_publish_year": 2000,
+      "has_fulltext": true,
+      "ia": [
+        "isbn_9783442362912",
+        "longqishishoubuq0000paol",
+        "lheritage0000paol",
+        "bwb_KP-158-900",
+        "isbn_3570128032",
+        "eragon0000paol_k1f3",
+        "eragondasvermach0000paol",
+        "eragon10000paol",
+        "eragon01paol",
+        "eragonpaol00paol",
+        "eragonpa00paol",
+        "isbn_0552553719_0",
+        "eragon00paol_1",
+        "eragon0000paol_o5z0",
+        "eragon00paol_0",
+        "eragoninheritanc00chri_0",
+        "eragon00paol"
+      ],
+      "ia_collection": [
+        "americana",
+        "delawarecountydistrictlibrary",
+        "inlibrary",
+        "internetarchivebooks",
+        "printdisabled"
+      ],
+      "key": "/works/OL5819895W",
+      "language": [
+        "ita",
+        "chi",
+        "por",
+        "ger",
+        "fre",
+        "pol",
+        "spa",
+        "eng"
+      ],
+      "lending_edition_s": "OL25775976M",
+      "lending_identifier_s": "isbn_9783442362912",
+      "public_scan_b": false,
+      "series_key": [
+        "OL326107L"
+      ],
+      "series_name": [
+        "The Inheritance Cycle"
+      ],
+      "series_position": [
+        "1"
+      ],
+      "title": "Eragon"
+    },
+    {
+      "author_key": [
+        "OL1425963A"
+      ],
+      "author_name": [
+        "Christopher Paolini"
+      ],
+      "cover_edition_key": "OL10751961M",
+      "cover_height": 500,
+      "cover_i": 2411585,
+      "cover_width": 338,
+      "ebook_access": "borrowable",
+      "edition_count": 53,
+      "first_publish_year": 2004,
+      "has_fulltext": true,
+      "ia": [
+        "burisinggoeragon0000paol",
+        "brisingrorsevenp0000paol",
+        "dieweisheitdesfe0000paol",
+        "hoakiemtap1brisi0000paol",
+        "eragonbrisingr0000paol",
+        "isbn_9780375826740",
+        "brisingrorsevenp00paol_0",
+        "isbn_9788492429394"
+      ],
+      "ia_collection": [
+        "inlibrary",
+        "internetarchivebooks",
+        "printdisabled"
+      ],
+      "key": "/works/OL5819884W",
+      "language": [
+        "cat",
+        "ita",
+        "ger",
+        "fre",
+        "rus",
+        "kor",
+        "pol",
+        "vie",
+        "heb",
+        "spa",
+        "eng"
+      ],
+      "lending_edition_s": "OL38231477M",
+      "lending_identifier_s": "burisinggoeragon0000paol",
+      "public_scan_b": false,
+      "series_key": [
+        "OL326107L"
+      ],
+      "series_name": [
+        "The Inheritance Cycle"
+      ],
+      "series_position": [
+        "3"
+      ],
+      "title": "Brisingr"
+    },
+    {
+      "author_key": [
+        "OL1425963A"
+      ],
+      "author_name": [
+        "Christopher Paolini"
+      ],
+      "cover_edition_key": "OL7429348M",
+      "cover_height": 180,
+      "cover_i": 233258,
+      "cover_width": 161,
+      "ebook_access": "printdisabled",
+      "edition_count": 11,
+      "first_publish_year": 2005,
+      "has_fulltext": true,
+      "ia": [
+        "eragoneldest0000paol"
+      ],
+      "ia_collection": [
+        "cnusd-ol",
+        "internetarchivebooks",
+        "printdisabled"
+      ],
+      "key": "/works/OL5819891W",
+      "language": [
+        "spa",
+        "eng"
+      ],
+      "public_scan_b": false,
+      "series_key": [
+        "OL326107L"
+      ],
+      "series_name": [
+        "The Inheritance Cycle"
+      ],
+      "series_position": [
+        "1-2"
+      ],
+      "subtitle": "The Inheritance Cycle Series, Books 1 & 2",
+      "title": "Eragon & Eldest"
+    },
+    {
+      "author_key": [
+        "OL1425963A"
+      ],
+      "author_name": [
+        "Christopher Paolini"
+      ],
+      "cover_edition_key": "OL27939293M",
+      "cover_height": 475,
+      "cover_i": 12848701,
+      "cover_width": 317,
+      "ebook_access": "borrowable",
+      "edition_count": 73,
+      "first_publish_year": 2005,
+      "has_fulltext": true,
+      "ia": [
+        "najstarszy0000paol",
+        "eldest0000paol_x1s1",
+        "eldestspanishedi00chri",
+        "eldest00paol",
+        "eldest00paol",
+        "eldest0000paol_q6o5",
+        "eldest0000paol_p0a7",
+        "eldest00chri_0",
+        "eldestinheritanc00chri_0",
+        "eldest00paol_0",
+        "zhanglaoeldest0000paol",
+        "eldest0000paol",
+        "eldest00chri",
+        "6629z"
+      ],
+      "ia_collection": [
+        "americana",
+        "delawarecountydistrictlibrary",
+        "friendsofthesanfranciscopubliclibrary",
+        "inlibrary",
+        "internetarchivebooks",
+        "popularchinesebooks",
+        "printdisabled",
+        "toronto"
+      ],
+      "key": "/works/OL5819886W",
+      "language": [
+        "ita",
+        "tur",
+        "chi",
+        "por",
+        "ger",
+        "fre",
+        "cze",
+        "pol",
+        "vie",
+        "heb",
+        "spa",
+        "eng"
+      ],
+      "lending_edition_s": "OL26466182M",
+      "lending_identifier_s": "najstarszy0000paol",
+      "public_scan_b": false,
+      "series_key": [
+        "OL326107L"
+      ],
+      "series_name": [
+        "The Inheritance Cycle"
+      ],
+      "series_position": [
+        "2"
+      ],
+      "title": "Eldest"
+    },
+    {
+      "author_key": [
+        "OL1425963A"
+      ],
+      "author_name": [
+        "Christopher Paolini"
+      ],
+      "cover_edition_key": "OL25053846M",
+      "cover_height": 900,
+      "cover_i": 6973055,
+      "cover_width": 609,
+      "ebook_access": "borrowable",
+      "edition_count": 38,
+      "first_publish_year": 2010,
+      "has_fulltext": true,
+      "ia": [
+        "inheritancebookf0000unse",
+        "inheritanceorvau0000paol",
+        "disanthuakinheri0000paol",
+        "inheritance00chri",
+        "inheritance00chri",
+        "inheritanceorvau00paol_0"
+      ],
+      "ia_collection": [
+        "inlibrary",
+        "internetarchivebooks",
+        "openlibrary-d-ol",
+        "printdisabled"
+      ],
+      "key": "/works/OL16175854W",
+      "language": [
+        "ger",
+        "heb",
+        "cat",
+        "fre",
+        "vie",
+        "eng",
+        "spa"
+      ],
+      "lending_edition_s": "OL38233486M",
+      "lending_identifier_s": "inheritancebookf0000unse",
+      "public_scan_b": false,
+      "series_key": [
+        "OL326107L"
+      ],
+      "series_name": [
+        "The Inheritance Cycle"
+      ],
+      "series_position": [
+        "4"
+      ],
+      "title": "Inheritance"
+    }
+  ]
+}

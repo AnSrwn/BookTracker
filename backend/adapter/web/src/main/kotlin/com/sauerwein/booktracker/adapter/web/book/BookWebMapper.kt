@@ -8,7 +8,7 @@ import com.sauerwein.booktracker.core.book.usecases.AddBookCommand
 
 fun CreateBookRequest.toCommand() = AddBookCommand(
     title = title,
-    author = author,
+    authors = authors.map { it.trim() },
     publisher = publisher,
     isbn = isbn?.let(Isbn::of),
     publicationYear = publicationYear,
@@ -19,7 +19,7 @@ fun CreateBookRequest.toCommand() = AddBookCommand(
 fun Book.toResponse() = BookResponse(
     id = id.value,
     title = title,
-    author = author,
+    authors = authors.map { it.name },
     publisher = publisher,
     isbn = isbn?.value,
     publicationYear = publicationYear,

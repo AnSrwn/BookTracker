@@ -1,11 +1,12 @@
 package com.sauerwein.booktracker.adapter.web.book.dtos
 
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Positive
 
 data class CreateBookRequest(
     @field:NotBlank val title: String,
-    @field:NotBlank val author: String,
+    @field:NotEmpty val authors: List<@NotBlank String>,
     val publisher: String? = null,
     val isbn: String? = null,
     val publicationYear: Int? = null,
