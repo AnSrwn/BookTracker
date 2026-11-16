@@ -165,6 +165,41 @@ class CompositeBookMetadataSourceTest {
         assertEquals(emptyList(), composite(finder, library).search("eragon"))
     }
 
+    /** D11: when every provider was skipped, nobody looked — that is not "no such book". */
+    @Test
+    fun `reports an outage when every provider was skipped for a spent quota`() {
+        val composite = composite(FakeProvider(FINDER, failure = quotaSpent(FINDER)))
+
+        assertFailsWith<SourceQuotaExhaustedException> { composite.search("eragon") }
+    }
+
+    @Test
+    fun `reports the failure when one provider failed and the other was skipped`() {
+        val finder = FakeProvider(FINDER, failure = quotaSpent(FINDER))
+        val library = FakeProvider(LIBRARY, failure = down(LIBRARY))
+
+        val e = assertFailsWith<SourceUnavailableException> { composite(finder, library).search("eragon") }
+        assertEquals(LIBRARY, e.source)
+        assertEquals(1, e.suppressed.size)
+    }
+
+    @Test
+    fun `still returns hits when the others were skipped`() {
+        val finder = FakeProvider(FINDER, failure = quotaSpent(FINDER))
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
+
+        assertEquals(listOf("Eragon"), composite(finder, library).search("eragon").map { it.title })
+    }
+
+    /** The catalog-only setup: no source to ask, so a miss is a miss (warned about at startup). */
+    @Test
+    fun `is a miss when no provider is running at all`() {
+        val composite = composite()
+
+        assertEquals(emptyList(), composite.search("eragon"))
+        assertNull(composite.findByIsbn(ISBN))
+    }
+
     @Test
     fun `answers with an empty list when every provider found nothing`() {
         assertEquals(emptyList(), composite(FakeProvider(FINDER), FakeProvider(LIBRARY)).search("zzzz"))
@@ -218,8 +253,36 @@ class CompositeBookMetadataSourceTest {
     }
 
     @Test
+    fun `reports an outage when every ISBN provider was skipped for a spent quota`() {
+        assertFailsWith<SourceQuotaExhaustedException> {
+            composite(FakeProvider(LIBRARY, failure = quotaSpent(LIBRARY))).findByIsbn(ISBN)
+        }
+    }
+
+    @Test
+    fun `is a miss when one ISBN provider was skipped and another answered cleanly`() {
+        val library = FakeProvider(LIBRARY, failure = quotaSpent(LIBRARY))
+        val archive = FakeProvider(ARCHIVE)
+
+        assertNull(composite(library, archive).findByIsbn(ISBN))
+    }
+
+    @Test
     fun `is a miss when every provider answered cleanly`() {
         assertNull(composite(FakeProvider(LIBRARY), FakeProvider(ARCHIVE)).findByIsbn(ISBN))
+    }
+
+    // Configuration
+
+    /** A disabled provider may stay listed; a misspelled one is only found by this warning. */
+    @Test
+    fun `names order ids that match no running provider`() {
+        val unmatched = CompositeBookMetadataSource.unmatchedOrderIds(
+            order = listOf(FINDER, SourceId.of("findr"), LIBRARY),
+            sources = listOf(FakeProvider(FINDER), FakeProvider(LIBRARY)),
+        )
+
+        assertEquals(listOf(SourceId.of("findr")), unmatched)
     }
 
     // Records

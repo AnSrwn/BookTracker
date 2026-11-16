@@ -20,11 +20,17 @@ class BookDataConfig {
         registrations: ObjectProvider<BookSourceRegistration>,
         properties: BookDataProperties,
     ): BookMetadataSource {
-        val composite = CompositeBookMetadataSource(
-            sources = registrations.orderedStream().map { it.source }.toList(),
-            searchOrder = properties.order.search.map(SourceId::of),
-            isbnOrder = properties.order.isbn.map(SourceId::of),
-        )
+        val sources = registrations.orderedStream().map { it.source }.toList()
+        val searchOrder = properties.order.search.map(SourceId::of)
+        val isbnOrder = properties.order.isbn.map(SourceId::of)
+        val composite = CompositeBookMetadataSource(sources = sources, searchOrder = searchOrder, isbnOrder = isbnOrder)
+
+        mapOf("search" to searchOrder, "isbn" to isbnOrder).forEach { (list, order) ->
+            val unmatched = CompositeBookMetadataSource.unmatchedOrderIds(order, sources)
+            if (unmatched.isNotEmpty()) {
+                log.warn("booktracker.bookdata.order.{} lists {}, which matches no running source (disabled or misspelled)", list, unmatched)
+            }
+        }
 
         log.info(
             "Book sources: search {}, ISBN lookup {}",

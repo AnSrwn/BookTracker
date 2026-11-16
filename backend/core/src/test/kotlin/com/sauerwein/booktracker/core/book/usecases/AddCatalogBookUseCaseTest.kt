@@ -35,13 +35,17 @@ class AddCatalogBookUseCaseTest {
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-11-16T10:00:00Z"), ZoneOffset.UTC)
 
-    private fun useCase(source: FakeBookMetadataSource = FakeBookMetadataSource()) = AddCatalogBookUseCase(
-        bookRepository = bookRepository,
-        bookMetadataSource = source,
-        upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(bookRepository, clock),
-        currentUserProvider = { userA },
-        clock = clock,
-    )
+    private fun useCase(source: FakeBookMetadataSource = FakeBookMetadataSource()): AddCatalogBookUseCase {
+        val upsert = UpsertCatalogEntryUseCase(bookRepository, clock)
+        return AddCatalogBookUseCase(
+            bookRepository = bookRepository,
+            bookMetadataSource = source,
+            upsertCatalogEntryUseCase = upsert,
+            resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsert),
+            currentUserProvider = { userA },
+            clock = clock,
+        )
+    }
 
     private val hit = CatalogBookRef.SourceRecord(TEST_SOURCE, RECORD)
 

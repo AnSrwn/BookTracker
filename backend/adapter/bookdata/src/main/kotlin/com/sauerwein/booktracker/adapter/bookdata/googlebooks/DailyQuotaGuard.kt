@@ -5,6 +5,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicReference
 
 /** Google resets its daily quotas at midnight Pacific time. */
 private val QUOTA_ZONE: ZoneId = ZoneId.of("America/Los_Angeles")
@@ -18,17 +19,19 @@ private val SHORT_QUOTA_PAUSE: Duration = Duration.ofSeconds(60)
  */
 class DailyQuotaGuard(private val clock: Clock) {
 
-    @Volatile
-    private var closedUntil: Instant? = null
+    private val closedUntil = AtomicReference<Instant?>(null)
 
-    fun isClosed(): Boolean = closedUntil?.let { Instant.now(clock).isBefore(it) } ?: false
+    fun isClosed(): Boolean = closedUntil.get()?.let { Instant.now(clock).isBefore(it) } ?: false
 
-    /** Closes the guard and returns until when. */
+    /**
+     * Closes the guard and returns until when it is now closed. Never shortens a pause: requests
+     * run concurrently, and a short-term quota answered at the same moment as the daily one must
+     * not reopen Google after a minute.
+     */
     fun trip(daily: Boolean): Instant {
         val now = Instant.now(clock)
         val until = if (daily) nextReset(now) else now.plus(SHORT_QUOTA_PAUSE)
-        closedUntil = until
-        return until
+        return closedUntil.updateAndGet { current -> if (current != null && current.isAfter(until)) current else until }!!
     }
 
     private fun nextReset(now: Instant): Instant =

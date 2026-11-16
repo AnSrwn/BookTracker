@@ -45,6 +45,19 @@ class DailyQuotaGuardTest {
         assertEquals(Instant.parse("2026-11-17T08:00:00Z"), guard.trip(daily = true))
     }
 
+    /** Requests run concurrently: a short-term quota answered at the same time must not reopen Google after a minute. */
+    @Test
+    fun `a short pause never shortens a daily one`() {
+        val clock = MutableClock(Instant.parse("2026-11-16T10:00:00Z"))
+        val guard = DailyQuotaGuard(clock)
+
+        guard.trip(daily = true)
+        assertEquals(Instant.parse("2026-11-17T08:00:00Z"), guard.trip(daily = false))
+
+        clock.now = Instant.parse("2026-11-16T10:05:00Z")
+        assertTrue(guard.isClosed())
+    }
+
     @Test
     fun `pauses a minute for a short-term quota`() {
         val clock = MutableClock(Instant.parse("2026-11-16T10:00:00Z"))

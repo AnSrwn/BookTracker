@@ -97,6 +97,8 @@ All by the user on 2026-11-16.
 - D9 (Q10): when adding a Google hit returns 404, the app opens an **empty** manual form. Nothing from the hit is carried over, not even the ISBN. (App-side rule; the backend's part is D6/D8.)
 - D10 (Q5): **simple ISBN dedupe in 9.7**, ahead of 9.9's merge. A hit is dropped when an earlier result already has the same ISBN-13. "Earlier" follows the result order: local hits, then providers in the configured search order (Google first). The first one wins as it is; no field merge.
   - Interpretation (A4, to confirm with the plan): only **catalog** results suppress later hits. The caller's own private book with ISBN `X` does not hide an addable hit for `X`, since D12 of 9.6 allows a catalog and a private copy side by side.
+- D11 (code review finding 1, user, 2026-11-16): **a miss needs someone to have looked.** Nothing found and no provider answered cleanly — every asked one skipped for a spent quota — is a 503, like a failure. Refines D4: a skipped provider still does not count as failed while another one answered cleanly (E8e unchanged). With no provider running at all, a miss stays a miss (catalog-only setup). Same rule for ISBN lookup.
+- D12 (code review finding 4, user, 2026-11-16): **one retry** on Google's `503` (2 attempts) instead of 3, until 9.9 asks the providers in parallel. Accepted effect: at October's 503 rate Google would be missing from about a quarter of searches instead of about an eighth.
 - D3 (Q3): **startup fails** when Google is enabled and the key is empty, with a clear message. Running without Google needs `enabled: false`. `enabled` defaults to `true`.
 
 ## Assumptions (to be confirmed)
@@ -198,4 +200,20 @@ Case: someone starts the backend without `BOOKTRACKER_GOOGLE_BOOKS_API_KEY`, and
 | E8–E8e | unit (`SearchCatalogUseCaseTest`, `CompositeBookMetadataSourceTest`) + live with Google unreachable | Open Library hits still returned; query nobody knows → 503, detail names no provider |
 | E9 | start with empty key | refused, message names `BOOKTRACKER_GOOGLE_BOOKS_API_KEY` and `enabled=false` |
 | — | key location | loaded from git-ignored `bootstrap/config/application.yaml` (decided with the user 2026-11-16 instead of `backend/.env` + Gradle code) |
+
+## Code review of `4e93225` (2026-11-16)
+
+All 7 findings checked against the code; all valid, all fixed on `feature/google_books` (not committed).
+
+| # | Finding | Verdict | Fix |
+|---|---------|---------|-----|
+| 1 | Every provider skipped for quota → `[]` instead of 503 | valid; a rule question → D11 | composite throws when nobody answered cleanly |
+| 2 | `DailyQuotaGuard.trip` could shorten a daily pause to 60 s | valid (concurrent requests) | `AtomicReference`, never moves the reopening earlier |
+| 3 | `InterruptedException` in the backoff → 500, interrupt lost | valid; real once 9.9 cancels parallel calls | restore the interrupt, throw `GoogleBooksException` (degrades) |
+| 4 | Google retries delay Open Library | valid trade-off → D12 | 2 attempts |
+| 5 | `storeByIsbn` duplicated `ResolveIsbnUseCase` | valid; the copies already differed | `ResolveIsbnUseCase.catalogBook(isbn)`, used by add; one resolution for scan, search and add |
+| 6 | Unknown ids in `order` ignored silently | valid | WARN at startup; not a failure, since a disabled provider may stay listed |
+| 7 | `ProviderProperties.enabled` never read | valid, minor; "its default can disagree" is inaccurate (missing = off in both) | kept, documented as read by `@ConditionalOnProperty` |
+
+Verified: `./gradlew build` green, 200 unit tests (9 new). The cases are not reproducible live (spent quota, interrupt, concurrent trips); unit tests cover them.
 

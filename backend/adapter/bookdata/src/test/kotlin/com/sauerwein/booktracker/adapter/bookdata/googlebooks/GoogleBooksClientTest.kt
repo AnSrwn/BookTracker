@@ -70,21 +70,43 @@ class GoogleBooksClientTest {
         assertTrue(request.uri.rawPath.endsWith("/books/v1/volumes"))
     }
 
-    /** E3: a 503 is common at Google and worth retrying. */
+    /** E3: a 503 is common at Google and worth one retry (D12). */
     @Test
-    fun `retries a 503 and answers once Google does`() {
-        val http = FakeHttp(UNAVAILABLE, UNAVAILABLE, searchFixture())
+    fun `retries a 503 once and answers when Google does`() {
+        val http = FakeHttp(UNAVAILABLE, searchFixture())
 
         assertEquals(10, client(http).search("eragon").size)
-        assertEquals(3, http.requests.size)
+        assertEquals(2, http.requests.size)
     }
 
+    /** D12: every retry delays Open Library until 9.9 asks the providers in parallel. */
     @Test
-    fun `gives up after three 503s`() {
-        val http = FakeHttp(UNAVAILABLE, UNAVAILABLE, UNAVAILABLE)
+    fun `gives up after two 503s`() {
+        val http = FakeHttp(UNAVAILABLE, UNAVAILABLE, searchFixture())
 
         assertFailsWith<GoogleBooksException> { client(http).search("eragon") }
-        assertEquals(3, http.requests.size)
+        assertEquals(2, http.requests.size)
+    }
+
+    /** An interrupted pause is a failed source (the search degrades), not a 500 — and the interrupt survives. */
+    @Test
+    fun `fails as a source failure and keeps the interrupt when the pause is interrupted`() {
+        val http = FakeHttp(UNAVAILABLE, searchFixture())
+        val client = GoogleBooksClient(
+            restClient = googleBooksRestClient("https://books.example", "BookTracker/test", KEY, http),
+            country = "DE",
+            quotaGuard = guard,
+            retryBackoff = Duration.ofSeconds(10),
+        )
+
+        Thread.currentThread().interrupt()
+        try {
+            assertFailsWith<GoogleBooksException> { client.search("eragon") }
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+        assertEquals(1, http.requests.size)
     }
 
     /** E2, E4: a spent quota is never retried, and nothing is sent until it resets. */

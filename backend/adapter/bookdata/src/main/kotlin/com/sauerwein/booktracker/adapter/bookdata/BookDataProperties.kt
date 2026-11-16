@@ -28,6 +28,11 @@ data class BookDataProperties(
 }
 
 data class ProviderProperties(
+    /**
+     * Not read from here: `@ConditionalOnProperty` on the provider's config reads the raw property
+     * and decides whether the provider exists at all. Bound so a block is complete in one place;
+     * the default matches the condition's — a missing `enabled` is off.
+     */
     val enabled: Boolean = false,
     val baseUrl: String,
     val connectTimeout: Duration = Duration.ofSeconds(1),

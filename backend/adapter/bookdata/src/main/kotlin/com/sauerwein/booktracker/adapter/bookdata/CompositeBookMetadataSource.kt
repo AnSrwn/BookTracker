@@ -3,16 +3,21 @@ package com.sauerwein.booktracker.adapter.bookdata
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedException
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
-import com.sauerwein.booktracker.core.book.models.*
+import com.sauerwein.booktracker.core.book.models.BookCandidate
+import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceDescriptor
+import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRef
 
 /**
  * All providers behind the one port. Which provider serves which query comes from its
  * descriptor, in which order from configuration — this class must never name a source.
  *
- * A provider that fails is skipped and the others still answer. Only when nothing was found
- * and at least one asked provider failed is the result an outage rather than a miss
- * (9.7 D4, D5). A provider whose quota is spent was not asked, so it does not count as
- * failed: otherwise every miss would be a 503 until the quota resets.
+ * A provider that fails is skipped and the others still answer. A miss is only a miss if
+ * someone actually looked: when nothing was found, the result is an outage if any asked
+ * provider failed (9.7 D4, D5), or if no provider answered at all — every one skipped for a
+ * spent quota (D11). A spent quota alone does not turn a miss into an outage while another
+ * provider answered cleanly: otherwise every miss would be a 503 until the quota resets.
  *
  * Sequential for now; parallel fan-out and the field merge are 9.9.
  */
@@ -43,21 +48,21 @@ class CompositeBookMetadataSource(
     )
 
     override fun search(text: String): List<BookCandidate> {
-        val failures = mutableListOf<SourceUnavailableException>()
-        val hits = searchProviders.flatMap { provider -> ask(failures) { provider.search(text) }.orEmpty() }
+        val outcome = Outcome()
+        val hits = searchProviders.flatMap { provider -> outcome.ask { provider.search(text) }.orEmpty() }
 
-        if (hits.isEmpty() && failures.isNotEmpty()) throw combined(failures)
+        if (hits.isEmpty()) outcome.throwIfNobodyLooked()
         return hits
     }
 
     /** The first provider that knows the ISBN wins, and the rest are not asked. */
     override fun findByIsbn(isbn: Isbn): BookCandidate? {
-        val failures = mutableListOf<SourceUnavailableException>()
+        val outcome = Outcome()
         for (provider in isbnProviders) {
-            ask(failures) { provider.findByIsbn(isbn) }?.let { return it }
+            outcome.ask { provider.findByIsbn(isbn) }?.let { return it }
         }
 
-        if (failures.isNotEmpty()) throw combined(failures)
+        outcome.throwIfNobodyLooked()
         return null
     }
 
@@ -65,21 +70,51 @@ class CompositeBookMetadataSource(
     override fun findByRecordId(ref: SourceRef): BookCandidate? =
         sources.firstOrNull { it.descriptor.id == ref.source }?.findByRecordId(ref)
 
-    private inline fun <T> ask(failures: MutableList<SourceUnavailableException>, block: () -> T): T? =
-        try {
-            block()
-        } catch (_: SourceQuotaExhaustedException) {
-            null
-        } catch (e: SourceUnavailableException) {
-            failures += e
-            null
+    /** What the asked providers did: answered cleanly (a hit or a miss), failed, or were skipped. */
+    private class Outcome {
+        private var answered = 0
+        private val failures = mutableListOf<SourceUnavailableException>()
+        private val skipped = mutableListOf<SourceQuotaExhaustedException>()
+
+        fun <T> ask(block: () -> T): T? =
+            try {
+                block().also { answered++ }
+            } catch (e: SourceQuotaExhaustedException) {
+                skipped += e
+                null
+            } catch (e: SourceUnavailableException) {
+                failures += e
+                null
+            }
+
+        /**
+         * Called when nothing was found. A failure means the book may exist (D4, D5); no clean
+         * answer at all means nobody looked (D11). With no provider asked, a miss stays a miss:
+         * that is the catalog-only setup, warned about at startup.
+         */
+        fun throwIfNobodyLooked() {
+            when {
+                failures.isNotEmpty() -> throw combined(failures + skipped)
+                skipped.isNotEmpty() && answered == 0 -> throw combined(skipped)
+            }
         }
 
-    private fun combined(failures: List<SourceUnavailableException>): SourceUnavailableException =
-        failures.first().apply { failures.drop(1).forEach(::addSuppressed) }
+        private fun combined(all: List<SourceUnavailableException>): SourceUnavailableException =
+            all.first().apply { all.drop(1).forEach(::addSuppressed) }
+    }
 
     companion object {
         val COMPOSITE_ID = SourceId.of("composite")
+
+        /**
+         * Ids in a configured order that match no running provider. Not an error: a disabled
+         * provider may stay listed. But a misspelled one would silently fall to the end of the
+         * order, so it is worth a warning at startup.
+         */
+        fun unmatchedOrderIds(order: List<SourceId>, sources: List<BookMetadataSource>): List<SourceId> {
+            val running = sources.map { it.descriptor.id }.toSet()
+            return order.filterNot { it in running }
+        }
 
         /** Listed ids first, in their order; the rest after, by id, so the result never depends on bean order. */
         private fun ordered(providers: List<BookMetadataSource>, order: List<SourceId>): List<BookMetadataSource> {

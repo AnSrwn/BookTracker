@@ -22,8 +22,12 @@ private const val MAX_RESULTS = 10
 private const val FIELDS =
     "items(id,volumeInfo(title,authors,publisher,publishedDate,pageCount,industryIdentifiers,imageLinks/thumbnail))"
 
-/** `503` is common at Google (5 of 8 calls in one run in October 2026): retried, unlike a spent quota. */
-private const val MAX_ATTEMPTS = 3
+/**
+ * `503` is common at Google (5 of 8 calls in one run in October 2026): retried, unlike a spent
+ * quota. One retry only (9.7 D12): until 9.9 asks the providers in parallel, every retry delays
+ * Open Library, which is asked after Google.
+ */
+private const val MAX_ATTEMPTS = 2
 
 private val DAILY_QUOTA_REASONS = setOf("dailyLimitExceeded", "dailyLimitExceededUnreg")
 private val QUOTA_REASONS = DAILY_QUOTA_REASONS + setOf("quotaExceeded", "rateLimitExceeded", "userRateLimitExceeded")
@@ -74,8 +78,18 @@ class GoogleBooksClient(
             if (volumes != null) return volumes.mapNotNull(mapper::toCandidate)
             if (attempt == MAX_ATTEMPTS) throw GoogleBooksException("Google Books answered 503 $MAX_ATTEMPTS times")
 
-            Thread.sleep(retryBackoff.multipliedBy(attempt.toLong()))
+            pauseBeforeRetry(attempt)
             attempt++
+        }
+    }
+
+    /** An interrupted pause is a failed source, not a bug: the search degrades, and the interrupt is kept. */
+    private fun pauseBeforeRetry(attempt: Int) {
+        try {
+            Thread.sleep(retryBackoff.multipliedBy(attempt.toLong()))
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw GoogleBooksException("Interrupted while waiting to retry Google Books")
         }
     }
 

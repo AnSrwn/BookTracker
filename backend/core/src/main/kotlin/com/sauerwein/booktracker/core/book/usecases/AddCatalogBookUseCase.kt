@@ -4,7 +4,6 @@ import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.CatalogBookRef
-import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceRef
 import com.sauerwein.booktracker.core.book.models.isAddable
 import com.sauerwein.booktracker.core.shared.exception.NotFoundException
@@ -20,8 +19,9 @@ import java.time.temporal.ChronoUnit
  *
  * A search hit that is not stored yet enters the catalog here, and only here (D27):
  * - a source record is fetched from its source as the full record first (D29);
- * - a hit whose data may not be stored (9.7 D1, D6) is resolved by its ISBN like a scan, so
- *   what is stored is the CC0 record for that ISBN, never the hit. No CC0 record → not found.
+ * - a hit whose data may not be stored (9.7 D1, D6) is resolved by its ISBN through the scan's
+ *   own [ResolveIsbnUseCase], so what is stored is the CC0 record for that ISBN, never the hit.
+ *   No storable record → not found.
  *
  * If the sources are down, the add fails with `SourceUnavailableException`.
  */
@@ -29,6 +29,7 @@ class AddCatalogBookUseCase(
     private val bookRepository: BookRepository,
     private val bookMetadataSource: BookMetadataSource,
     private val upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
+    private val resolveIsbnUseCase: ResolveIsbnUseCase,
     private val currentUserProvider: CurrentUserProvider,
     private val clock: Clock,
 ) {
@@ -37,7 +38,7 @@ class AddCatalogBookUseCase(
         val book = when (ref) {
             is CatalogBookRef.Stored -> bookRepository.findVisible(ref.id, user)?.takeIf { it.ownerId == null }
             is CatalogBookRef.SourceRecord -> bookRepository.findCatalogBySource(ref.source, ref.recordId) ?: storeFromSource(ref)
-            is CatalogBookRef.ByIsbn -> bookRepository.findCatalogByIsbn(ref.isbn) ?: storeByIsbn(ref.isbn)
+            is CatalogBookRef.ByIsbn -> resolveIsbnUseCase.catalogBook(ref.isbn)
         } ?: throw NotFoundException("Catalog book", ref.describe())
 
         bookRepository.addToLibrary(
@@ -54,12 +55,6 @@ class AddCatalogBookUseCase(
         val candidate = bookMetadataSource.findByRecordId(SourceRef(ref.source, ref.recordId))
             ?.takeIf { it.isAddable && it.source == ref.source }
             ?: return null
-        return upsertCatalogEntryUseCase(candidate)
-    }
-
-    /** The same steps as a scan. Only an addable (CC0) answer is stored; anything else is not found. */
-    private fun storeByIsbn(isbn: Isbn): Book? {
-        val candidate = bookMetadataSource.findByIsbn(isbn)?.takeIf { it.isAddable } ?: return null
         return upsertCatalogEntryUseCase(candidate)
     }
 

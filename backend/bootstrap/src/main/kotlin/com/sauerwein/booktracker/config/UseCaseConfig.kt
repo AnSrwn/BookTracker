@@ -35,12 +35,14 @@ class UseCaseConfig {
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
         upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
+        resolveIsbnUseCase: ResolveIsbnUseCase,
         currentUserProvider: CurrentUserProvider,
         clock: Clock,
     ) = AddCatalogBookUseCase(
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
         upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
+        resolveIsbnUseCase = resolveIsbnUseCase,
         currentUserProvider = currentUserProvider,
         clock = clock,
     )
