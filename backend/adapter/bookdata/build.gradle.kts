@@ -5,6 +5,8 @@ plugins {
 dependencies {
     implementation(project(":core"))
 
+    implementation(libs.spring.boot)
+    implementation(libs.spring.boot.autoconfigure)
     implementation(libs.spring.context)
     implementation(libs.spring.web)
     implementation(libs.jackson.module.kotlin)

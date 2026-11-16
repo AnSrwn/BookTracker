@@ -17,6 +17,26 @@ val BookCandidate.isCatalogEligible: Boolean
 val BookCandidate.isAddable: Boolean
     get() = isCatalogEligible && isbn != null
 
+/**
+ * How the app can add this result, or `null` if it cannot: the one rule, for every source.
+ * A stored book by its id; an eligible hit by its source record (D29); a hit whose data may not
+ * be stored by its ISBN alone, which adding resolves like a scan (9.7 D1, D6).
+ */
+val BookCandidate.addRef: CatalogBookRef?
+    get() = when {
+        bookId != null -> CatalogBookRef.Stored(bookId)
+        isAddable -> CatalogBookRef.SourceRecord(source, sourceId!!)
+        !persistableInPublicCatalog && isbn != null -> CatalogBookRef.ByIsbn(isbn)
+        else -> null
+    }
+
+/**
+ * A hit whose data may not be stored, and which has no ISBN to resolve, can be neither added
+ * nor copied into a private book (9.7 D6, D8): it is not shown at all.
+ */
+val BookCandidate.isDeadEnd: Boolean
+    get() = bookId == null && !persistableInPublicCatalog && isbn == null
+
 fun BookCandidate.toCatalogBook(id: BookId, now: Instant): Book {
     require(isCatalogEligible) { "Candidate from $source may not enter the public catalog" }
 

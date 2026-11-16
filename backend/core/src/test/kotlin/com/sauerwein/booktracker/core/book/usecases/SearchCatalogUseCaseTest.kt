@@ -1,6 +1,8 @@
 package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.FakeBookMetadataSource
+import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedException
+import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.models.BookKind
 import com.sauerwein.booktracker.core.book.models.Isbn
@@ -13,10 +15,14 @@ import java.time.Clock
 import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val MIN_LOCAL_HITS = 2
+private val TEST_SOURCE = SourceId.of("test_source")
+private val ERAGON_US = Isbn.of("9780375826689")
+private val ERAGON_DE = Isbn.of("9783570402931")
 
 class SearchCatalogUseCaseTest {
 
@@ -170,5 +176,103 @@ class SearchCatalogUseCaseTest {
         assertEquals(BookKind.CATALOG, hits.getValue("Eragon").kind)
         assertEquals(ownBook.id, hits.getValue("Eragon, signed").bookId)
         assertEquals(BookKind.PRIVATE, hits.getValue("Eragon, signed").kind)
+    }
+
+    // Outages (9.7 D2, D4)
+
+    /** D2: with local hits a failing source only shortens the answer. */
+    @Test
+    fun `returns the local hits when the sources fail`() {
+        bookRepository.seed(testBook(ownerId = null, title = "Eragon"))
+        val source = FakeBookMetadataSource(searchFailure = SourceUnavailableException(TEST_SOURCE))
+
+        assertEquals(listOf("Eragon"), useCase(source)("eragon").map { it.title })
+    }
+
+    /** D4: without local hits an outage is the answer, never an empty list that reads as "no such book". */
+    @Test
+    fun `fails when the sources fail and there is nothing local`() {
+        val source = FakeBookMetadataSource(searchFailure = SourceUnavailableException(TEST_SOURCE))
+
+        assertFailsWith<SourceUnavailableException> { useCase(source)("eragon") }
+    }
+
+    @Test
+    fun `a spent quota alone fails the same way`() {
+        val source = FakeBookMetadataSource(searchFailure = SourceQuotaExhaustedException(TEST_SOURCE))
+
+        assertFailsWith<SourceUnavailableException> { useCase(source)("eragon") }
+    }
+
+    // Hits whose data may not be stored (9.7 D6, D8)
+
+    @Test
+    fun `drops a hit that may not be stored and has no ISBN`() {
+        val source = FakeBookMetadataSource(
+            searchResults = listOf(
+                testCandidate(title = "Eragon, no ISBN", persistableInPublicCatalog = false),
+                testCandidate(title = "Eragon", isbn = ERAGON_US, persistableInPublicCatalog = false),
+            ),
+        )
+
+        assertEquals(listOf("Eragon"), useCase(source)("eragon").map { it.title })
+    }
+
+    /** A CC0 hit without an ISBN stays: it can still be copied into a private book. */
+    @Test
+    fun `keeps a storable hit without an ISBN`() {
+        val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon")))
+
+        assertEquals(listOf("Eragon"), useCase(source)("eragon").map { it.title })
+    }
+
+    // ISBN dedupe (9.7 D10, A4)
+
+    /** E7e: the first hit with an ISBN wins as it is; merging fields is 9.9. */
+    @Test
+    fun `keeps only the first hit per ISBN`() {
+        val source = FakeBookMetadataSource(
+            searchResults = listOf(
+                testCandidate(title = "Eragon (first)", isbn = ERAGON_US, sourceId = SourceRecordId("a")),
+                testCandidate(title = "Eragon (second)", isbn = ERAGON_US, sourceId = SourceRecordId("b")),
+                testCandidate(title = "Eragon, German", isbn = ERAGON_DE, sourceId = SourceRecordId("c")),
+            ),
+        )
+
+        assertEquals(listOf("Eragon (first)", "Eragon, German"), useCase(source)("eragon").map { it.title })
+    }
+
+    /** E7f: a stored catalog book beats any hit for its ISBN. */
+    @Test
+    fun `drops a hit whose ISBN is already a local catalog book`() {
+        bookRepository.seed(testBook(ownerId = null, title = "Eragon", isbn = ERAGON_US))
+        val source = FakeBookMetadataSource(
+            searchResults = listOf(testCandidate(title = "Eragon (hit)", isbn = ERAGON_US, persistableInPublicCatalog = false)),
+        )
+
+        assertEquals(listOf("Eragon"), useCase(source)("eragon").map { it.title })
+    }
+
+    /** E7g / A4: a private copy does not hide the catalog book for the same ISBN (9.6 D12). */
+    @Test
+    fun `a private book with the ISBN does not hide the hit`() {
+        bookRepository.seed(testBook(ownerId = user, title = "Eragon, my copy", isbn = ERAGON_US))
+        val source = FakeBookMetadataSource(
+            searchResults = listOf(testCandidate(title = "Eragon", isbn = ERAGON_US)),
+        )
+
+        assertEquals(listOf("Eragon, my copy", "Eragon"), useCase(source)("eragon").map { it.title })
+    }
+
+    @Test
+    fun `hits without an ISBN are never deduplicated`() {
+        val source = FakeBookMetadataSource(
+            searchResults = listOf(
+                testCandidate(title = "Eragon", sourceId = SourceRecordId("a")),
+                testCandidate(title = "Eragon", sourceId = SourceRecordId("b")),
+            ),
+        )
+
+        assertEquals(2, useCase(source)("eragon").size)
     }
 }

@@ -1,10 +1,11 @@
 package com.sauerwein.booktracker.adapter.bookdata.resilience
 
 import com.sauerwein.booktracker.core.book.BookMetadataSource
+import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedException
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import com.sauerwein.booktracker.core.book.models.SourceRef
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.ratelimiter.RequestNotPermitted
@@ -24,6 +25,7 @@ private const val OUTCOME_MISS = "miss"
 private const val OUTCOME_ERROR = "error"
 private const val OUTCOME_CIRCUIT_OPEN = "circuit_open"
 private const val OUTCOME_THROTTLED = "throttled"
+private const val OUTCOME_QUOTA_EXHAUSTED = "quota_exhausted"
 
 /**
  * Wraps any source with a circuit breaker and a per-source timer, both named after
@@ -48,8 +50,8 @@ class ResilientBookMetadataSource(
     override fun findByIsbn(isbn: Isbn): BookCandidate? =
         call(OPERATION_ISBN, isHit = { it != null }) { delegate.findByIsbn(isbn) }
 
-    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? =
-        call(OPERATION_RECORD, isHit = { it != null }) { delegate.findByRecordId(recordId) }
+    override fun findByRecordId(ref: SourceRef): BookCandidate? =
+        call(OPERATION_RECORD, isHit = { it != null }) { delegate.findByRecordId(ref) }
 
     private fun <T> call(operation: String, isHit: (T) -> Boolean, block: () -> T): T {
         val sample = Timer.start(meterRegistry)
@@ -66,6 +68,10 @@ class ResilientBookMetadataSource(
         } catch (e: RequestNotPermitted) {
             outcome = OUTCOME_THROTTLED
             throw unavailable(operation, e)
+        } catch (e: QuotaExhaustedException) {
+            // Not an outage: the provider was not asked, and the composite skips it (D4)
+            outcome = OUTCOME_QUOTA_EXHAUSTED
+            throw SourceQuotaExhaustedException(descriptor.id, e)
         } catch (e: BookSourceException) {
             throw unavailable(operation, e)
         } catch (e: RestClientException) {

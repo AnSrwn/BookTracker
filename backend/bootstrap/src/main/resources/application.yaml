@@ -17,6 +17,28 @@ booktracker:
   bookdata:
     # Open Library asks for a contact User-Agent
     user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
+    # Source ids in the order their answers are used. Google finds books, the CC0 sources
+    # describe the ones we keep (ADR-007); Google does no ISBN lookup (9.7 D7).
+    order:
+      search: [google_books, open_library]
+      isbn: [open_library]
+    # One uniform block per provider. `enabled: false` removes it from the running application.
+    open-library:
+      enabled: ${BOOKTRACKER_OPEN_LIBRARY_ENABLED:true}
+      base-url: https://openlibrary.org
+      connect-timeout: 1s
+      read-timeout: 3s
+      # The contact User-Agent would allow 3; the limit is per IP and blocking is the penalty
+      rate-per-second: 1
+    google-books:
+      # Enabled without a key, the backend refuses to start (9.7 D3)
+      enabled: ${BOOKTRACKER_GOOGLE_BOOKS_ENABLED:true}
+      base-url: https://www.googleapis.com
+      connect-timeout: 1s
+      read-timeout: 3s
+      api-key: ${BOOKTRACKER_GOOGLE_BOOKS_API_KEY:}
+      # Required from servers Google cannot geolocate (403 otherwise)
+      country: DE
   catalog:
     # With at least this many local hits a text search does not ask the external sources
     min-local-hits: 5

@@ -58,8 +58,9 @@ class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource
     }
 
     /** An edition by its own key, e.g. a search hit the user adds. The id came back from our app: validate before it goes into a path. */
-    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? {
-        val editionId = editionIdOrNull(recordId.value) ?: return null
+    override fun findByRecordId(ref: SourceRef): BookCandidate? {
+        if (ref.source != descriptor.id) return null
+        val editionId = editionIdOrNull(ref.recordId.value) ?: return null
         val edition = restClient.get()
             .uri("/books/{id}.json", editionId.value)
             .exchange { _, response -> response.readJsonOrNull<OpenLibraryEdition>() }
