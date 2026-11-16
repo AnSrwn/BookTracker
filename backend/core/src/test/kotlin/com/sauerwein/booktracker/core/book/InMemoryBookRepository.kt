@@ -3,6 +3,8 @@ package com.sauerwein.booktracker.core.book
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.user.UserId
 import java.time.Instant
@@ -41,6 +43,9 @@ class InMemoryBookRepository : BookRepository {
     }
 
     override fun findCatalogByIsbn(isbn: Isbn): Book? = books.values.find { it.ownerId == null && it.isbn == isbn }
+
+    override fun findCatalogBySource(source: SourceId, sourceId: SourceRecordId): Book? =
+        books.values.find { it.ownerId == null && it.source == source && it.sourceId == sourceId }
 
     override fun searchVisible(text: String, user: UserId, limit: Int): List<Book> {
         val words = text.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }

@@ -1,13 +1,18 @@
 package com.sauerwein.booktracker.config
 
 import com.sauerwein.booktracker.core.book.BookMetadataSource
+import com.sauerwein.booktracker.core.book.CatalogHitIds
 import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.usecases.*
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import java.security.SecureRandom
 import java.time.Clock
+
+private val log = LoggerFactory.getLogger(UseCaseConfig::class.java)
 
 @Configuration
 class UseCaseConfig {
@@ -28,13 +33,30 @@ class UseCaseConfig {
     @Bean
     fun addCatalogBookUseCase(
         bookRepository: BookRepository,
+        bookMetadataSource: BookMetadataSource,
+        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
         currentUserProvider: CurrentUserProvider,
         clock: Clock,
     ) = AddCatalogBookUseCase(
         bookRepository = bookRepository,
+        bookMetadataSource = bookMetadataSource,
+        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
         currentUserProvider = currentUserProvider,
         clock = clock,
     )
+
+    /**
+     * Signs the ids of search hits not stored yet (D28). Without a configured secret, dev gets a
+     * random one per process: hit ids then die with a restart, which is fine locally. Production
+     * must set it (compose.prod.yaml), or ids differ between instances and restarts.
+     */
+    @Bean
+    fun catalogHitIds(@Value($$"${booktracker.catalog.hit-id-secret:}") secret: String): CatalogHitIds {
+        if (secret.isNotBlank()) return CatalogHitIds(secret.toByteArray(Charsets.UTF_8))
+
+        log.warn("booktracker.catalog.hit-id-secret is not set: using a random secret, search hit ids will not survive a restart")
+        return CatalogHitIds(ByteArray(32).also(SecureRandom()::nextBytes))
+    }
 
     @Bean
     fun getBookUseCase(bookRepository: BookRepository, currentUserProvider: CurrentUserProvider) = GetBookUseCase(
@@ -73,14 +95,12 @@ class UseCaseConfig {
     @Bean
     fun searchCatalogUseCase(
         resolveIsbnUseCase: ResolveIsbnUseCase,
-        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
         currentUserProvider: CurrentUserProvider,
         @Value($$"${booktracker.catalog.min-local-hits}") minLocalHits: Int,
     ) = SearchCatalogUseCase(
         resolveIsbnUseCase = resolveIsbnUseCase,
-        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
         currentUserProvider = currentUserProvider,

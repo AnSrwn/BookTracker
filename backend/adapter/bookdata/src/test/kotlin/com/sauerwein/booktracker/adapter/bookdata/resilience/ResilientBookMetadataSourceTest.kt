@@ -6,6 +6,7 @@ import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.ratelimiter.RateLimiter
 import io.github.resilience4j.ratelimiter.RequestNotPermitted
@@ -99,6 +100,15 @@ class ResilientBookMetadataSourceTest {
         assertEquals(1, count("isbn", "error"))
     }
 
+    /** Adding a search hit fetches the full record: an outage there must be a 503 too, tagged as its own operation. */
+    @Test
+    fun `reports an outage on a record lookup as unavailable`() {
+        val source = resilient(FailingSource(TestSourceException()))
+
+        assertFailsWith<SourceUnavailableException> { source.findByRecordId(SourceRecordId("1055026991")) }
+        assertEquals(1, count("record", "error"))
+    }
+
     private class TestSourceException : BookSourceException("source answered 503")
 
     private class FailingSource(private val failure: RuntimeException) : BookMetadataSource {
@@ -111,6 +121,11 @@ class ResilientBookMetadataSourceTest {
         }
 
         override fun findByIsbn(isbn: Isbn): BookCandidate? {
+            calls++
+            throw failure
+        }
+
+        override fun findByRecordId(recordId: SourceRecordId): BookCandidate? {
             calls++
             throw failure
         }

@@ -49,4 +49,7 @@ data class OpenLibrarySearchEdition(
     val title: String? = null,
     /** ISBN-10 and ISBN-13 mixed, as Open Library lists them. */
     val isbn: List<String>? = null,
+    @JsonProperty("publish_year") val publishYear: List<Int>? = null,
+    @JsonProperty("cover_i") val coverId: Long? = null,
+    val publisher: List<String>? = null,
 )

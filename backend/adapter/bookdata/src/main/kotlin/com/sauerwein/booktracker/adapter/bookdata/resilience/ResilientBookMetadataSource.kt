@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.ratelimiter.RequestNotPermitted
@@ -16,6 +17,7 @@ private const val METRIC_SOURCE_REQUESTS = "bookdata.source.requests"
 
 private const val OPERATION_SEARCH = "search"
 private const val OPERATION_ISBN = "isbn"
+private const val OPERATION_RECORD = "record"
 
 private const val OUTCOME_HIT = "hit"
 private const val OUTCOME_MISS = "miss"
@@ -45,6 +47,9 @@ class ResilientBookMetadataSource(
 
     override fun findByIsbn(isbn: Isbn): BookCandidate? =
         call(OPERATION_ISBN, isHit = { it != null }) { delegate.findByIsbn(isbn) }
+
+    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? =
+        call(OPERATION_RECORD, isHit = { it != null }) { delegate.findByRecordId(recordId) }
 
     private fun <T> call(operation: String, isHit: (T) -> Boolean, block: () -> T): T {
         val sample = Timer.start(meterRegistry)

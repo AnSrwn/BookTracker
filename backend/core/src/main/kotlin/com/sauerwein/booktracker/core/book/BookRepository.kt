@@ -3,6 +3,8 @@ package com.sauerwein.booktracker.core.book
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.user.UserId
 import java.time.Instant
 
@@ -26,6 +28,9 @@ interface BookRepository {
 
     /** Public, approved rows only — a user's private row is their edit, not a source's answer. */
     fun findCatalogByIsbn(isbn: Isbn): Book?
+
+    /** The approved catalog row stored from that source record, if any. */
+    fun findCatalogBySource(source: SourceId, sourceId: SourceRecordId): Book?
 
     /** Every word of [text] must appear in the title or an author name. */
     fun searchVisible(text: String, user: UserId, limit: Int): List<Book>

@@ -20,6 +20,9 @@ booktracker:
   catalog:
     # With at least this many local hits a text search does not ask the external sources
     min-local-hits: 5
+    # Signs the ids of search hits not stored yet (D28). At least 32 bytes. Empty in dev: a random
+    # per-process secret is used and hit ids die with a restart. Required in production.
+    hit-id-secret: ${BOOKTRACKER_CATALOG_HIT_ID_SECRET:}
 
 management:
   endpoints:

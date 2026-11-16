@@ -32,6 +32,9 @@ class StubBookMetadataSource : BookMetadataSource {
     override fun findByIsbn(isbn: Isbn): BookCandidate? =
         eragon.takeIf { it.isbn == isbn }
 
+    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? =
+        eragon.takeIf { it.sourceId == recordId }
+
     private val eragon = BookCandidate(
         title = "Eragon – Das Vermächtnis der Drachenreiter",
         authors = listOf(Author("Christopher Paolini", SourceRef(SourceId.of("dnb"), SourceRecordId("129384240")))),

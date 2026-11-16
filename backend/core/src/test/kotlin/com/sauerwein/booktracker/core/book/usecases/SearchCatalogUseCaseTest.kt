@@ -28,7 +28,6 @@ class SearchCatalogUseCaseTest {
 
     private fun useCase(source: FakeBookMetadataSource) = SearchCatalogUseCase(
         resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsertCatalogEntry),
-        upsertCatalogEntryUseCase = upsertCatalogEntry,
         bookRepository = bookRepository,
         bookMetadataSource = source,
         currentUserProvider = { user },
@@ -139,49 +138,24 @@ class SearchCatalogUseCaseTest {
         assertTrue(useCase(source)("eragon").isEmpty())
     }
 
-    /** D19: every hit the app may add carries an id, so the app never decides which catalog book to save. */
+    /** D27: search only reads. A hit enters the catalog when a user adds it, from the full record. */
     @Test
-    fun `stores a source hit with an ISBN in the catalog and returns it with its id`() {
-        val source = FakeBookMetadataSource(
-            searchResults = listOf(
-                testCandidate(
-                    title = "Eragon",
-                    isbn = Isbn.of("9780375826689")
-                )
-            )
-        )
-
-        val hit = useCase(source)("eragon").single()
-
-        val stored = bookRepository.stored().single()
-        assertNull(stored.ownerId)
-        assertEquals(stored.id, hit.bookId)
-        assertEquals(BookKind.CATALOG, hit.kind)
-    }
-
-    /** D22: a hit without an ISBN could never be matched to a scan, so it stays out of the catalog. */
-    @Test
-    fun `never stores a source hit without an ISBN`() {
-        val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon", isbn = null)))
-
-        val hit = useCase(source)("eragon").single()
-
-        assertTrue(bookRepository.stored().isEmpty())
-        assertNull(hit.bookId)
-        assertNull(hit.kind)
-    }
-
-    @Test
-    fun `never stores a hit from a source the licence keeps out of the catalog`() {
-        val hit = testCandidate(
-            isbn = Isbn.of("9780375826689"),
-            source = SourceId.of("google_books"),
-            persistableInPublicCatalog = false
-        )
+    fun `never stores a source hit, not even one with an ISBN`() {
+        val hit = testCandidate(title = "Eragon", isbn = Isbn.of("9780375826689"))
         val source = FakeBookMetadataSource(searchResults = listOf(hit))
 
-        assertNull(useCase(source)("dune").single().bookId)
+        assertEquals(listOf(hit), useCase(source)("eragon"))
         assertTrue(bookRepository.stored().isEmpty())
+    }
+
+    @Test
+    fun `leaves source hits without a stored id`() {
+        val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon", isbn = Isbn.of("9780375826689"))))
+
+        val hit = useCase(source)("eragon").single()
+
+        assertNull(hit.bookId)
+        assertNull(hit.kind)
     }
 
     @Test
@@ -196,26 +170,5 @@ class SearchCatalogUseCaseTest {
         assertEquals(BookKind.CATALOG, hits.getValue("Eragon").kind)
         assertEquals(ownBook.id, hits.getValue("Eragon, signed").bookId)
         assertEquals(BookKind.PRIVATE, hits.getValue("Eragon, signed").kind)
-    }
-
-    /** Another edition record claims an ISBN the catalog already holds: one row, listed once. */
-    @Test
-    fun `a source hit whose ISBN the catalog already holds comes back as that row, once`() {
-        val isbn = Isbn.of("9780375826689")
-        val catalogBook = testBook(
-            ownerId = null,
-            title = "Eragon",
-            isbn = isbn,
-            source = SourceId.of("dnb"),
-            sourceId = SourceRecordId("1055026991")
-        )
-        bookRepository.seed(catalogBook)
-        val source =
-            FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon (Open Library)", isbn = isbn)))
-
-        val hits = useCase(source)("eragon")
-
-        assertEquals(listOf(catalogBook.id), hits.map { it.bookId })
-        assertEquals(1, bookRepository.stored().size)
     }
 }

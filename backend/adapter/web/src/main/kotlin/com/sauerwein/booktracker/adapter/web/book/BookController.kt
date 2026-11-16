@@ -2,12 +2,16 @@ package com.sauerwein.booktracker.adapter.web.book
 
 import com.sauerwein.booktracker.adapter.web.book.dtos.BookResponse
 import com.sauerwein.booktracker.adapter.web.book.dtos.CreatePrivateBookRequest
+import com.sauerwein.booktracker.adapter.web.common.config.API_PREFIX
+import com.sauerwein.booktracker.core.book.CatalogHitIds
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
+import com.sauerwein.booktracker.core.book.models.CatalogBookRef
 import com.sauerwein.booktracker.core.book.usecases.AddCatalogBookUseCase
 import com.sauerwein.booktracker.core.book.usecases.CreatePrivateBookUseCase
 import com.sauerwein.booktracker.core.book.usecases.GetBookUseCase
 import com.sauerwein.booktracker.core.book.usecases.GetBooksUseCase
+import com.sauerwein.booktracker.core.shared.exception.NotFoundException
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -29,15 +33,22 @@ class BookController(
     private val addCatalogBookUseCase: AddCatalogBookUseCase,
     private val getBookUseCase: GetBookUseCase,
     private val getBooksUseCase: GetBooksUseCase,
+    private val catalogHitIds: CatalogHitIds,
 ) {
     @PostMapping("/private")
     fun createPrivate(@Valid @RequestBody request: CreatePrivateBookRequest): ResponseEntity<BookResponse> {
         return created(createPrivateBookUseCase(command = request.toCommand()))
     }
 
+    /** [id] is opaque: a stored book's UUID or a search hit's signed id, exactly as search or scan returned it. */
     @PostMapping("/catalog/{id}")
-    fun addCatalogBook(@PathVariable id: UUID): ResponseEntity<BookResponse> {
-        return created(addCatalogBookUseCase(id = BookId(id)))
+    fun addCatalogBook(@PathVariable id: String): ResponseEntity<BookResponse> {
+        val ref = runCatching { CatalogBookRef.Stored(BookId(UUID.fromString(id))) }.getOrNull()
+            ?: catalogHitIds.decode(id)
+            // Forged, tampered or garbled: indistinguishable from an unknown id, on purpose
+            ?: throw NotFoundException("Catalog book", id)
+
+        return created(addCatalogBookUseCase(ref))
     }
 
     @GetMapping
@@ -56,13 +67,10 @@ class BookController(
             .body(book.toResponse())
     }
 
-    /** `/…/books/private` and `/…/books/catalog/{id}` both point at `/…/books/{id}`; keeps the `/api/v1` prefix. */
+    /** Every created book lives at `GET /books/{id}`, whichever POST created it. */
     private fun locationOf(id: BookId): URI {
-        val requestPath = ServletUriComponentsBuilder.fromCurrentRequestUri().build().path.orEmpty()
-        val booksPath = requestPath.substringBeforeLast("/$BOOKS_PATH/") + "/$BOOKS_PATH/{id}"
-
-        return ServletUriComponentsBuilder.fromCurrentRequestUri()
-            .replacePath(booksPath)
+        return ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("$API_PREFIX/$BOOKS_PATH/{id}")
             .buildAndExpand(id.value)
             .toUri()
     }

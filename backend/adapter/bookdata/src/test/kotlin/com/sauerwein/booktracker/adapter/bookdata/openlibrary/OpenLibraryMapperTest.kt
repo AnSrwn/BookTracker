@@ -185,8 +185,48 @@ class OpenLibraryMapperTest {
         title = title,
         authorName = listOf("Christopher Paolini"),
         authorKey = listOf("OL1425963A"),
+        firstPublishYear = 2000,
+        coverId = 13921600,
         editions = OpenLibrarySearchEditions(docs = editions.toList()),
     )
+
+    /** Review finding 3: year, cover and publisher of the matched edition, never the work's (another edition's). */
+    @Test
+    fun `takes year, cover and publisher of a search hit from its matching edition`() {
+        val doc = searchDoc(
+            OpenLibrarySearchEdition(
+                key = "/books/OL22650690M",
+                title = "Eragon",
+                isbn = listOf("9780375840548"),
+                publishYear = listOf(2006),
+                coverId = 14829791,
+                publisher = listOf("Knopf", "Knopf Books for Young Readers"),
+            ),
+        )
+
+        val candidate = mapper.toCandidate(doc)
+
+        assertEquals(2006, candidate?.publicationYear)
+        assertEquals("https://covers.openlibrary.org/b/id/14829791-L.jpg?default=false", candidate?.coverUrl)
+        assertEquals("Knopf", candidate?.publisher)
+    }
+
+    @Test
+    fun `leaves year and cover empty when the matching edition has none, rather than borrowing the work's`() {
+        val candidate = mapper.toCandidate(searchDoc(OpenLibrarySearchEdition(key = "/books/OL40346106M", title = "Eragon; Eldest")))
+
+        assertNull(candidate?.publicationYear)
+        assertNull(candidate?.coverUrl)
+        assertNull(candidate?.publisher)
+    }
+
+    @Test
+    fun `falls back to the work's year and cover only for a hit without an edition`() {
+        val candidate = mapper.toCandidate(searchDoc())
+
+        assertEquals(2000, candidate?.publicationYear)
+        assertEquals("https://covers.openlibrary.org/b/id/13921600-L.jpg?default=false", candidate?.coverUrl)
+    }
 
     @Test
     fun `takes sourceId and ISBN of a search hit from its matching edition`() {
@@ -250,6 +290,13 @@ class OpenLibraryMapperTest {
 
         assertNull(candidate?.sourceId)
         assertNull(candidate?.isbn)
+    }
+
+    @Test
+    fun `accepts a bare or prefixed edition id and nothing else`() {
+        assertEquals(SourceRecordId("OL22650690M"), editionIdOrNull("OL22650690M"))
+        assertEquals(SourceRecordId("OL22650690M"), editionIdOrNull("/books/OL22650690M"))
+        listOf("OL22650690W", "../admin", "OL1M/../x", "").forEach { assertNull(editionIdOrNull(it), "accepted '$it'") }
     }
 
     private fun map(edition: OpenLibraryEdition) = mapper.toCandidate(edition, listOf(PAOLINI))

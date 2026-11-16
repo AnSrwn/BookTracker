@@ -63,7 +63,7 @@ All by the user on 2026-11-16.
 - D15 (Q19): **catalog books are never edited from the frontend.** Only private books are created and edited.
 - D16 (Q20): **no field comparison** on the server. The request says what it is: "add catalog book X" or "create a private book".
 - D17 (Q15): **two endpoints.** `POST /books` creates a private book (fields, as today). A separate endpoint adds a catalog book by id; its path is a planning detail.
-- D19 (Q21): **search hits are upserted into the catalog** too, so every result the app can add has an id and the app never decides which catalog book to save. Reverses 9.5 (X10).
+- D19 (Q21) — **superseded by D27**: search hits are upserted into the catalog too, so every result the app can add has an id and the app never decides which catalog book to save. Reverses 9.5 (X10).
 - D20 (Q21): **every book has its own id**, independent of ISBN or source, and **the kind (catalog or private) is always visible**. In the DB this already holds (UUID `id`, `owner_id`). The API shows the id and the kind in scan and search results and in library responses.
 - D21 (A4): "create my own version" of a catalog book is **a frontend process**: the app copies the catalog data into the form, the user edits, and the app calls `POST /books`. No extra endpoint.
 - D22 (Q23): a search hit enters the catalog only with **ISBN, title and at least one author**. Page count is not required. Hits without them have no id (→ Q22).
@@ -71,6 +71,27 @@ All by the user on 2026-11-16.
 - D25 (planning, user, 2026-11-16): API naming puts the kind in the path. `POST /books/private` creates a private book (replaces `POST /books`), and `POST /books/catalog/{id}` adds a catalog book. `GET /books` and `GET /books/{id}` stay.
 - D26 (planning, user, 2026-11-16): a new branch `feature/user_books` from the latest `main`, covering only this scope.
 - D24 (Q24): after "create my own version" the **backend only creates the private book**. The app removes the catalog entry via "remove from library" once that exists; until then both stay (D12).
+
+## Code review of PR #10 (2026-11-16)
+
+All 8 findings checked against the code and valid. Decisions taken with the user while discussing findings 4 and 5:
+
+- D27 (finding 4, user): **save on add, not on search.** Search only reads; a hit is stored as a catalog book only when a user adds it. Supersedes D19. Scans still store immediately. Reason: a GET that writes lets retries, prefetching or a script grow the shared catalog, and thin search rows overwrote full rows (finding 1) and blocked full scans (finding 2).
+- D28 (user): **signed opaque id for hits not stored yet.** HMAC over source + record id; the app sends whatever id it got (UUID or hit id) to `POST /books/catalog/{id}` and never learns the provider. No server state. Signed, not encrypted: opaque, not secret.
+- D29 (user): **fetch the full record on add** via a general port method (`findByRecordId`); never store thin search data. If the source is down, the add fails with 503.
+
+| # | Finding | Handling |
+|---|---------|----------|
+| 1 | Search overwrites full catalog rows | resolved by D27 |
+| 2 | Thin search rows block full ISBN lookups | resolved by D27/D29 |
+| 3 | Search hit mixes edition and work year/cover | year, cover, publisher from the edition |
+| 4 | GET writes to the shared catalog | resolved by D27 |
+| 5 | One transaction per stored hit | user wanted it fixed; gone with D27 (search no longer writes) |
+| 6 | Library order without tie-breaker | `ORDER BY ub.created_at DESC, book.id` |
+| 7 | `Location` from cutting up the path | `API_PREFIX` + context path |
+| 8 | Conflict message from a `when` on the code | code and message passed together |
+
+Verified 2026-11-16: 127 unit tests green; manual run as `testuser` — search `eldest` returned UUIDs for stored and `h1.` ids for addable hits and wrote no row (13 → 13); adding a hit stored the full edition (*Eldest*, Knopf, 679 pages) and linked it (14 rows); again → 409; tampered or garbage id → 404; scan still returns a UUID.
 
 ## Requirements
 
@@ -87,8 +108,8 @@ All by the user on 2026-11-16.
 | R14 | Only approved catalog books can be added. An unknown id, another user's private book or the caller's own private book → 404 | B | ADR-006, D17 |
 | R17 | Adding a catalog book that is already in the caller's library → 409 | B | D14a |
 | R16 | The library may hold a catalog book and a private book with the same ISBN | A/B | D12 |
-| R22 | Scan and search results carry the book id and kind for every result that is in the catalog or among the caller's private books | B | D20 |
-| R23 | Search upserts every catalog-eligible hit that has an ISBN, a title and an author; a hit without them is returned without id | B | D19, D22 |
+| R22 | Scan and search results carry an opaque id and kind for every result the app may add: a stored book's UUID, or a signed hit id for a hit not stored yet | B | D20, D28 |
+| R23 | ~~Search upserts every eligible hit with an ISBN~~ (superseded by D27): search never writes; adding a hit (eligible, with ISBN, title, author) fetches and stores the full record | B | D22, D27, D29 |
 | R24 | A search hit is edition-level: its `sourceId` and ISBN come from the same edition | B | D22, R-1 |
 
 ## Planning notes (technical, no business decision)
@@ -167,7 +188,7 @@ All by the user on 2026-11-16.
 | R14, R20 | E16, E17 | Use-case tests: 404 for a foreign private book (add and get); 200 for an unlinked catalog book |
 | R12, R18, R16 | E13–E15 | `AddBookUseCaseTest`: private row + link; second private with the same ISBN accepted |
 | R21, R22 | E13, E17, E18, E21 | Web mapper unit tests: id + kind in the responses |
-| R23, R24 | E18, E19 | `OpenLibraryMapperTest` against new search fixtures with `editions`; `SearchCatalogUseCaseTest`: upsert for full hits only |
+| R23, R24 | E18, E19 | `OpenLibraryMapperTest` against new search fixtures with `editions`; `SearchCatalogUseCaseTest`: search never writes; `AddCatalogBookUseCaseTest`: full record on add |
 | R19 | E20 | Manual: migration on the dev DB, then `SELECT` on `user_book` |
 | all | — | Manual run against the dev stack: scan → add, search → add, create private, `GET /books` as two dev users |
 

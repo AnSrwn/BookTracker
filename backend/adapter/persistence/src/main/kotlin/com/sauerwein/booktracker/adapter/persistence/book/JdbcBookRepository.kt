@@ -4,6 +4,8 @@ import com.sauerwein.booktracker.core.book.BookRepository
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.user.UserId
 import org.springframework.dao.DuplicateKeyException
@@ -15,8 +17,11 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.*
 
-private const val DUPLICATE_BOOK = "DuplicateBook"
-private const val ALREADY_IN_LIBRARY = "AlreadyInLibrary"
+/** What a unique violation means to the caller: code and message travel together. */
+private data class Conflict(val code: String, val message: String)
+
+private val DUPLICATE_BOOK = Conflict(code = "DuplicateBook", message = "Book already exists in this collection")
+private val ALREADY_IN_LIBRARY = Conflict(code = "AlreadyInLibrary", message = "Book is already in your books")
 
 private const val INSERT_LINK = """
     INSERT INTO user_book (user_id, book_id, created_at)
@@ -59,14 +64,14 @@ class JdbcBookRepository(
 ) : BookRepository {
     override fun addPrivateBook(book: Book) {
         val owner = requireNotNull(book.ownerId) { "A private book needs an owner" }
-        write(conflictCode = DUPLICATE_BOOK) {
+        write(conflict = DUPLICATE_BOOK) {
             template.insert(book.toEntity())
             insertLink(userId = owner.value, bookId = book.id.value, createdAt = book.createdAt)
         }
     }
 
     override fun update(book: Book) {
-        write(conflictCode = DUPLICATE_BOOK) { template.update(book.toEntity()) }
+        write(conflict = DUPLICATE_BOOK) { template.update(book.toEntity()) }
     }
 
     override fun findVisible(id: BookId, user: UserId): Book? {
@@ -78,7 +83,7 @@ class JdbcBookRepository(
     }
 
     override fun addToLibrary(user: UserId, bookId: BookId, at: Instant) {
-        write(conflictCode = ALREADY_IN_LIBRARY) {
+        write(conflict = ALREADY_IN_LIBRARY) {
             insertLink(
                 userId = user.value,
                 bookId = bookId.value,
@@ -98,11 +103,15 @@ class JdbcBookRepository(
         return bookQueries.findCatalogByIsbn(isbn = isbn.value)?.toDomain()
     }
 
+    override fun findCatalogBySource(source: SourceId, sourceId: SourceRecordId): Book? {
+        return bookQueries.findCatalogBySource(source = source.value, sourceId = sourceId.value)?.toDomain()
+    }
+
     override fun searchVisible(text: String, user: UserId, limit: Int): List<Book> {
         return bookQueries.searchVisible(text = text, ownerId = user.value, limit = limit).map { it.toDomain() }
     }
 
-    override fun upsertCatalogEntry(book: Book): Book = write(conflictCode = DUPLICATE_BOOK) {
+    override fun upsertCatalogEntry(book: Book): Book = write(conflict = DUPLICATE_BOOK) {
         require(book.ownerId == null) { "Only public catalog rows are upserted" }
         val entity = book.toEntity()
 
@@ -145,15 +154,11 @@ class JdbcBookRepository(
      * public-catalog allowlist above all — means a code path skipped the licence rule: a bug,
      * so it stays a 500.
      */
-    private fun <T : Any> write(conflictCode: String, block: () -> T): T {
+    private fun <T : Any> write(conflict: Conflict, block: () -> T): T {
         try {
             return transactionTemplate.execute { block() }
         } catch (_: DuplicateKeyException) {
-            val message = when (conflictCode) {
-                ALREADY_IN_LIBRARY -> "Book is already in your books"
-                else -> "Book already exists in this collection"
-            }
-            throw ConflictException(code = conflictCode, message = message)
+            throw ConflictException(code = conflict.code, message = conflict.message)
         }
     }
 }

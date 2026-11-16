@@ -41,8 +41,9 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
     /**
      * A search hit, made edition-level by the matching edition Open Library returns with it:
      * `sourceId`, ISBN and title all come from that one edition, so a stored row never pairs
-     * one edition's key with another's ISBN. Without an edition the hit has neither — it stays
-     * a suggestion and never enters the catalog. The edition may be another language's (the
+     * one edition's key with another's ISBN, and year, cover and publisher come from it too.
+     * Search hits are never stored as they are (D27): adding one fetches the full edition. Without
+     * an edition the hit has no `sourceId` and cannot be added. The edition may be another language's (the
      * *Brisingr* work matched a Russian *Eragon* edition); its own title keeps the row consistent.
      */
     fun toCandidate(doc: OpenLibrarySearchDoc): BookCandidate? {
@@ -54,18 +55,23 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
         val authors =
             names.mapIndexed { index, name -> Author(name, keys?.get(index)?.let(::authorIdOrNull)?.let(::authorRef)) }
         val cleanAuthors = cleanAuthors(authors).ifEmpty { return null }
-        val sourceId =
-            edition?.key?.removePrefix(EDITION_KEY_PREFIX)?.takeIf { EDITION_ID.matches(it) }?.let(::SourceRecordId)
+        val sourceId = edition?.key?.let(::editionIdOrNull)
+
+        // With an edition, every edition-level field comes from it and from nothing else — the
+        // work's year and cover belong to some other edition. The work's values only stand in
+        // for a hit without an edition, which can never be added.
+        val year = if (edition != null) edition.publishYear?.firstOrNull() else doc.firstPublishYear
+        val coverId = if (edition != null) edition.coverId else doc.coverId
 
         return BookCandidate(
             title = title,
             authors = cleanAuthors,
-            publisher = null,
+            publisher = edition?.publisher?.firstOrNull { it.isNotBlank() },
             // An ISBN without the edition key it belongs to would be a guess
-            isbn = sourceId?.let { firstValidIsbn(edition.isbn?.sortedByDescending { it.length }) },
-            publicationYear = doc.firstPublishYear,
+            isbn = sourceId?.let { firstValidIsbn(edition?.isbn?.sortedByDescending { it.length }) },
+            publicationYear = year,
             pageCount = null,
-            coverUrl = doc.coverId?.let { "$COVERS_BASE_URL/id/$it-L.jpg?default=false" },
+            coverUrl = coverId?.let { "$COVERS_BASE_URL/id/$it-L.jpg?default=false" },
             source = descriptor.id,
             sourceId = sourceId,
             workKey = doc.key?.let(::workIdOrNull),
@@ -92,3 +98,7 @@ internal fun authorIdOrNull(key: String): SourceRecordId? =
 /** Stored, never put into a path — but still third-party data, so only a well-formed key is kept. */
 internal fun workIdOrNull(key: String): SourceRecordId? =
     key.removePrefix(WORK_KEY_PREFIX).takeIf { WORK_ID.matches(it) }?.let(::SourceRecordId)
+
+/** Edition keys arrive as `/books/OL…M`; a record id handed back by our own app is bare. Only a well-formed one goes into a path. */
+internal fun editionIdOrNull(key: String): SourceRecordId? =
+    key.removePrefix(EDITION_KEY_PREFIX).takeIf { EDITION_ID.matches(it) }?.let(::SourceRecordId)
