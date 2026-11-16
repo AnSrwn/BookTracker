@@ -41,6 +41,7 @@ out/
 
 ### Local notes ###
 docs/roadmap.md
+work/
 
 ### Claude Code (local run configs and settings) ###
 .claude/
