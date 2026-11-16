@@ -118,7 +118,7 @@ Solid arrows are Gradle dependencies; dashed arrows show which adapter implement
 
 ## 4. Request Flow
 
-Example: `POST /api/v1/books` (create a book). `WebConfig` adds the `/api/v1` prefix to the project's own `@RestController`s; springdoc's endpoints are excluded by package and stay at the root.
+Example: `POST /api/v1/books/private` (create a private book). `WebConfig` adds the `/api/v1` prefix to the project's own `@RestController`s; springdoc's endpoints are excluded by package and stay at the root.
 
 The transaction step is part of the target design and not implemented yet.
 
@@ -133,7 +133,7 @@ sequenceDiagram
     participant Jdbc as adapter:persistence<br/>JdbcBookRepository
     participant DB as PostgreSQL
 
-    App->>Sec: POST /api/v1/books + Bearer JWT
+    App->>Sec: POST /api/v1/books/private + Bearer JWT
     Sec->>Sec: Validate JWT (signature via JWKS, issuer, expiry)
     Sec->>Ctrl: Authenticated request
     Ctrl->>Ctrl: Validate CreateBookRequest (@Valid)
@@ -156,7 +156,7 @@ sequenceDiagram
 
 Packages follow the pattern `com.sauerwein.booktracker.<module>.<feature>` (e.g. `core.book`, `adapter.web.book`). The main class lives in `com.sauerwein.booktracker` so that component scanning and JDBC repository scanning cover all modules.
 
-Within a feature package, the code is grouped further into sub-packages: `models`, `usecases` and, where a feature has its own errors, `exception` in `core` (e.g. `core.book.models`, `core.book.usecases`, `core.book.exception`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`), and **only ports**: plain data such as `SourceDescriptor` is a model, and logic built on the ports is a use case — including the ones only other use cases call (`ResolveIsbnUseCase`, `CatalogUpsertUseCase`). Cross-feature code lives in `shared` (core) or `common` (adapters), grouped by concern (`config`, `exception`).
+Within a feature package, the code is grouped further into sub-packages: `models`, `usecases` and, where a feature has its own errors, `exception` in `core` (e.g. `core.book.models`, `core.book.usecases`, `core.book.exception`), `dtos` in `:adapter:web` (e.g. `adapter.web.book.dtos`). Ports stay directly in the feature package (`core.book.BookRepository`), and **only ports**: plain data such as `SourceDescriptor` is a model, and logic built on the ports is a use case — including the ones only other use cases call (`ResolveIsbnUseCase`, `UpsertCatalogEntryUseCase`). Cross-feature code lives in `shared` (core) or `common` (adapters), grouped by concern (`config`, `exception`).
 
 Files marked *(planned)* don't exist yet.
 
@@ -193,7 +193,7 @@ backend/
 │        ├─ SearchCatalogUseCase.kt           # Catalog first, external on thin recall
 │        ├─ FindBookByIsbnUseCase.kt          # Scan flow, exact lookup
 │        ├─ ResolveIsbnUseCase.kt             # Catalog first, then the source, then upsert
-│        └─ CatalogUpsertUseCase.kt           # Grows the catalog, licence permitting
+│        └─ UpsertCatalogEntryUseCase.kt           # Grows the catalog, licence permitting
 ├─ adapter/web/src/main/kotlin/com/sauerwein/booktracker/adapter/web/
 │  ├─ common/
 │  │  ├─ config/
@@ -212,7 +212,7 @@ backend/
 │  └─ catalog/                                # Discovery, separate from the library (planned)
 │     ├─ CatalogController.kt                 # /catalog/search, /catalog/isbn/{isbn}
 │     ├─ CatalogWebMapper.kt
-│     └─ dtos/BookCandidateResponse.kt        # Carries source + sourceId
+│     └─ dtos/BookCandidateResponse.kt        # Opaque id + kind; no provenance
 ├─ adapter/persistence/src/main/
 │  ├─ kotlin/com/sauerwein/booktracker/adapter/persistence/
 │  │  ├─ common/SpringTransactionRunner.kt    # implements core TransactionRunner (planned)
@@ -300,7 +300,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 | Validation error | 400 |
 | `NotFoundException` | 404 |
 | Conflict / duplicate | 409 |
-| `SourceUnavailableException` (book source down, throttled or circuit open) | 503, `code: SourceUnavailable` |
+| `SourceUnavailableException` (book source down, throttled or circuit open) | 503, `code: SourceUnavailable`, fixed detail without the source's name (it is logged instead) |
 | Unexpected error | 500 (without internal details) |
 
 ### API Documentation
@@ -321,7 +321,7 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
   ```
   A denylist (`source <> 'google_books'`) expresses the same rule but fails in the opposite direction: add a provider and forget the rule, and its records flow silently into a table every user reads. With the allowlist, the same oversight rejects the first insert — loudly, during development, at the moment someone would be reading that provider's licence anyway. A new provider is therefore search-only until it is deliberately promoted — and promoting one *does* take a migration to extend the constraint. That asymmetry is the point: adding a provider is free, while granting it space in the catalog every user reads is a reviewed act with a paper trail. Same instinct as ADR-006 deleting `findAll()` outright and rule 6 putting the visibility check where it cannot be skipped: shape it so the mistake is impossible, not merely discouraged.
 - The authority for that decision is the provider's `SourceDescriptor` (see below), checked in the use case so it is unit-testable; the `CHECK` is the backstop that catches a code path nobody thought of.
-- Catalog reads filter `review_state = 'APPROVED'` from that migration on, even though everything is inserted as `APPROVED` today. Introducing a review workflow later is then a changed default plus an admin endpoint — not an audit of every read path. The name is deliberately not `status`: ADR-006 rejected a single `status` field for the user's *relationship* to a book, and two adjacent columns of that name would confuse both.
+- Catalog reads filter `review_state = 'APPROVED'` from that migration on, even though everything is inserted as `APPROVED` today. Writes respect it too: the catalog upsert refreshes approved rows only (`DO UPDATE … WHERE review_state = 'APPROVED'`), so a scan or an add never overwrites a review decision, and a record held by a non-approved row is neither handed out by id nor linked to anyone. Introducing a review workflow later is then a changed default plus an admin endpoint — not an audit of every read path. The name is deliberately not `status`: ADR-006 rejected a single `status` field for the user's *relationship* to a book, and two adjacent columns of that name would confuse both.
 
 ### External Book Data
 
@@ -400,12 +400,14 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - Field-quality ordering is empirical. Config makes *changing* the order cheap; it does not tell you what the order should be. That knowledge comes from looking at records.
 - Fusing relevance-ranked results degrades as providers multiply. With 2–4 sources and ISBN-based dedupe it is fine; at eight it becomes a ranking problem in its own right. That is the scaling limit of this design.
 
-**Two endpoints, deliberately separate from the library.** `GET /api/v1/books` is the user's own shelf; discovery lives under `/api/v1/catalog`. Different latency, different caching, different response shape — a search hit is not yet a `Book` (no id, no owner, no timestamps), so it gets its own DTO.
+**Discovery is separate from the user's books.** `GET /api/v1/books` lists the user's own books; discovery lives under `/api/v1/catalog`. Different latency, different caching, different response shape — a hit is a candidate, not yet one of the user's books, so it gets its own DTO. Every hit the app may add carries an opaque `id` and `kind: CATALOG`; the caller's own books come back as `PRIVATE`. The `id` of a stored book is its UUID; a hit not stored yet gets a **signed hit id** (`h1.<payload>.<tag>`, HMAC-SHA256 over source and record id, `CatalogHitIds`), so the app hands back one kind of id and cannot forge or alter it. The id is signed, not encrypted: it is opaque to the app, not secret. **Provenance never leaves the backend**: responses carry no `source`/`sourceId`, and errors do not name a provider either, so the app cannot start to depend on one. A hit without an id cannot be added, only copied into a private book.
 
 | Endpoint | Purpose | Miss behaviour |
 |---|---|---|
 | `GET /api/v1/catalog/search?q=` | Free-text **or** ISBN; the backend classifies | empty list |
 | `GET /api/v1/catalog/isbn/{isbn}` | Scan flow, exact lookup | **404** → the app opens the manual form |
+| `POST /api/v1/books/catalog/{id}` | Add catalog book `{id}` (UUID or signed hit id, as returned) to my books — a link, never a copy. A hit not stored yet is fetched from its source as the full record and stored first | **404** for anything but an approved catalog book or a valid hit id; **409** if already added; **503** if the source is down while adding a hit |
+| `POST /api/v1/books/private` | Create a private book from fields (manual entry, or a catalog book the user wants to change, copied by the app) | — |
 
 - **The backend detects ISBNs, not the app.** `SearchQuery.of(raw)` in `core` returns either an ISBN query or free text, so a user pasting an ISBN into the search box just works and the rule lives in one place. It already needs the ISBN-10 → ISBN-13 normalisation anyway. A 13-digit string that fails the checksum, or an EAN with a `977` prefix (that is an ISSN, i.e. a magazine), falls back to free text rather than erroring — the digits might simply be part of a title.
 - **Search is explicit.** The user submits a term; there is no search-as-you-type. One external round trip per catalog miss (~200–500 ms) is therefore acceptable, and no debouncing is needed.
@@ -433,7 +435,7 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - **Two layers, because one port call can be several requests.** The rate limiter is a `ClientHttpRequestInterceptor` in each source's `RestClient`, so it throttles on the wire: an Open Library ISBN lookup is two requests (edition, then author), and a limiter around `findByIsbn` would let both through on one permit. Circuit breaker and metrics wrap the port instead (`ResilientBookMetadataSource`), since outcome — hit, miss, error, throttled, circuit open — only means something per lookup. Both are named after the descriptor id; the timer is `bookdata.source.requests` with tags `source`, `operation`, `outcome`.
 - **An outage is not a miss.** A source that fails throws `SourceUnavailableException` (503), never `null` — otherwise a timeout would send the scan flow to the manual form for a book that exists. Only the source's own failures are translated (provider exceptions, `RestClientException`, throttling, open circuit); anything else is a bug and stays a 500. With several sources, the composite (9.7) catches it per source and degrades.
 
-**The catalog grows by itself.** Every record resolved by ISBN — and every one a user saves — is upserted as a catalog row (`owner_id IS NULL`, ADR-006), so popular books end up local and external calls become the long tail. ISBN lookups are catalog-first and only reach the sources on a miss; text search asks the sources only while the catalog has fewer than `booktracker.catalog.min-local-hits` matches. **Search hits are never upserted**: they are thin (Open Library returns works, without ISBN, publisher or pages) and nobody has chosen them yet. Only a record from a CC0 source with a stable `sourceId` enters the public catalog; anything else can only ever become a private book. Note what this is and is not: a side effect of lookups a human asked for, not a crawl. The distinction matters for the policy below.
+**The catalog grows by itself — from deliberate actions only.** Two things write a catalog row (`owner_id IS NULL`, ADR-006): a scan, which resolves a full record by ISBN, and adding a search hit, which fetches the full record by its source record id (`BookMetadataSource.findByRecordId`). **Search itself only reads**: a GET that writes would let retries, prefetching or any script grow and rewrite the shared catalog, and search hits are thin (no pages, often no publisher) — stored, they would overwrite full rows and block the full lookup of their ISBN for good. So popular books end up local and external calls become the long tail, and every stored row is a full record. ISBN lookups are catalog-first and only reach the sources on a miss; text search asks the sources only while the catalog has fewer than `booktracker.catalog.min-local-hits` matches. Open Library search is edition-level (`fields=editions,editions.key,editions.isbn,editions.publish_year,editions.cover_i,editions.publisher,…`): `sourceId`, ISBN, title, year, cover and publisher come from the one matching edition, never the work's mixed values. A hit can be added only if it is catalog-eligible and has an edition ISBN (`isAddable`). Only a record from a CC0 source with a stable `sourceId` enters the public catalog; anything else can only ever become a private book. Note what this is and is not: a side effect of lookups a human asked for, not a crawl. The distinction matters for the policy below.
 
 **Usage policy is a separate constraint from the rate limit — and Open Library's is the binding one.** Their API policy states the APIs are "not intended to serve as a bulk data backend or high-traffic commercial infrastructure" ([Open Library API docs](https://openlibrary.org/developers/api)); they are meant for mission-aligned projects and tools that look books up for humans. Heavy or bulk consumers are asked to use the monthly data dumps or to get in touch at `openlibrary@archive.org`, and violations may be answered with aggressive rate limiting or blocking.
 
@@ -442,7 +444,7 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - **DNB imposes no comparable restriction, and none on commercial use.** Title data, ZDB journal data and the GND are CC0; SRU access is free and explicitly requires **no registration**; and the metadata business model draws no commercial / non-commercial line at all. There is no published rate limit either, so our 1 req/s there is self-imposed politeness, not a stated ceiling. The only documented guidance is technical: SRU is for targeted lookups, while **OAI-PMH** is the interface for continuously synchronising large datasets — so if German data is ever wanted in bulk, that is the path, not deep SRU pagination. Two further notes: DNB gives no warranty on continuity, timeliness, accuracy or completeness (one more reason the catalog wants `review_state`), and promises three months' notice before format changes, which protects the MARC parser. The GND *cross-concordances* are CC BY 4.0 rather than CC0 — attribution would apply if we ever used those; plain title data and the GND id do not need it.
 - Google Books has its own commercial terms plus branding and attribution requirements, which need their own read before any paid offering.
 
-`POST /api/v1/books` takes the (possibly user-corrected) fields plus optional `source`/`sourceId` provenance — the MVP lets the user fix a scan before saving, so the client sends fields regardless. Those provenance values are client-supplied: harmless as a label, but they must be re-resolved server-side before they are trusted to identify a **public** catalog row, or a forged pair would let a client attach arbitrary fields to an entry everyone sees. Same instinct as rule 6 — the owner never comes from the request, and neither does catalog identity.
+**Adding a book is one of two explicit actions, never a comparison.** Catalog books are never edited by users. `POST /api/v1/books/catalog/{id}` links an existing catalog book to the caller (`user_book`); it carries no fields, so nothing a client sends can change a row everyone reads. `POST /api/v1/books/private` creates a private book from fields — a manual entry, or a catalog book the user wants to change, which the app copies into the form first. The server never compares fields to decide which of the two a save is, and it never takes provenance from the request: the owner never comes from the request (rule 6), and neither does catalog identity. Private books are independent entities, so the same ISBN may exist several times per user, and a catalog book and a private book with the same ISBN may sit side by side.
 
 **DNB returns MARC21-XML** (`recordSchema=MARC21-xml`); six fields are hand-extracted rather than pulling in a MARC library. Gotchas found in a real record:
 
@@ -489,9 +491,9 @@ sequenceDiagram
         Ext-->>Src: 0..n records per source
         Src->>Src: normalise ISBN, dedupe, merge per field
         Src-->>UC: candidates
-        Note over UC,Repo: no upsert — search hits are thin and unchosen.<br/>ISBN lookups and saves upsert CC0 records instead
+        Note over UC,Repo: no write — a hit is stored only when a user adds it,<br/>from the full record (POST /books/catalog/{hit id})
     end
-    Ctrl-->>App: BookCandidateResponse[] (source + sourceId)
+    Ctrl-->>App: BookCandidateResponse[] (UUID or signed hit id + kind where addable)
 ```
 
 ### Images
@@ -619,7 +621,7 @@ What only a real database or HTTP exchange can show — SQL, migrations, constra
 ### ADR-006: Public catalog and private books in one table
 
 - **Context:** `book` currently conflates two things: objective facts about a book (title, author, ISBN, cover) and a user's personal relationship to it. The target is a centrally maintained catalog — curated by an admin or imported from public book databases — that every user can see, plus books a user creates when the catalog does not have them, visible only to their creator.
-- **Decision:** One `book` table with a **nullable** `owner_id`: `NULL` is a public catalog entry, a set value makes the row private to that user. The visibility rule `owner_id IS NULL OR owner_id = :me` lives behind the `BookRepository` port: no read method may return another user's private row, so every one of them is either scoped to the caller or restricted to `owner_id IS NULL`. An unscoped `findAll()` does not exist. Catalog rows have no owner and must not be given the curating admin's `sub`. A user's relationship to a book (reading status, possession, favourite) is a separate per-user row referencing the book, with independent axes instead of one `status` field, because owning, having read and favouring a book are not mutually exclusive.
+- **Decision:** One `book` table with a **nullable** `owner_id`: `NULL` is a public catalog entry, a set value makes the row private to that user. The visibility rule `owner_id IS NULL OR owner_id = :me` lives behind the `BookRepository` port: no read method may return another user's private row, so every one of them is either scoped to the caller or restricted to `owner_id IS NULL`. An unscoped `findAll()` does not exist. Catalog rows have no owner and must not be given the curating admin's `sub`. A user's relationship to a book is a separate per-user row referencing the book: `user_book (user_id, book_id, created_at)`, which exists since the user-books step. It links a user to catalog books (shared, never copied) and to their own private books, and "my books" (`GET /books`) reads only through it — the visibility rule is right for reading one book or searching, but listing everything visible would show the whole catalog to every user. Reading status, possession and favourite will live on that row as independent axes instead of one `status` field, because owning, having read and favouring a book are not mutually exclusive.
 
 | | One `book`, nullable `owner_id` ✅ | `book` + `custom_book` |
 |---|---|---|
@@ -632,7 +634,7 @@ What only a real database or HTTP exchange can show — SQL, migrations, constra
   - ➕ One id space and one mapper; the per-user row needs no polymorphic foreign key.
   - ➕ A private book can become a catalog entry without touching anything that references it.
   - ➖ Visibility is guaranteed by the port, not by the schema — an unscoped read method would silently leak private books, so none may exist.
-  - ➖ "The same ISBN only once" becomes two partial unique indexes, one for `owner_id IS NULL` (per ISBN) and one for `owner_id IS NOT NULL` (per owner and ISBN), both restricted to `isbn IS NOT NULL`. A plain `UNIQUE (owner_id, isbn)` misses duplicate public entries, and `NULLS NOT DISTINCT` would additionally allow a user only a single book without an ISBN.
+  - ➖ "The same ISBN only once" holds for the catalog only: a partial unique index on `isbn` where `owner_id IS NULL AND isbn IS NOT NULL`. The per-owner index (`owner_id, isbn`) was dropped in V5: private books are independent entities, and a user may keep several with the same ISBN.
   - ↪ Should private books ever need their own fields, they can move into a separate table later; only the per-user row's foreign key has to follow.
 
 ### ADR-007: Book data from public sources, cached in the catalog

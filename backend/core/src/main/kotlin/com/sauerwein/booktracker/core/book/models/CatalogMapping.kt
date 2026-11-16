@@ -10,6 +10,13 @@ import java.time.Instant
 val BookCandidate.isCatalogEligible: Boolean
     get() = persistableInPublicCatalog && sourceId != null
 
+/**
+ * Whether a hit not yet in the catalog may be offered for adding: eligible, and an ISBN so the
+ * stored row can be matched to a later scan (D22). Adding fetches the full record first (D29).
+ */
+val BookCandidate.isAddable: Boolean
+    get() = isCatalogEligible && isbn != null
+
 fun BookCandidate.toCatalogBook(id: BookId, now: Instant): Book {
     require(isCatalogEligible) { "Candidate from $source may not enter the public catalog" }
 
@@ -45,4 +52,6 @@ fun Book.toCandidate() = BookCandidate(
     sourceId = sourceId,
     workKey = workKey,
     persistableInPublicCatalog = ownerId == null,
+    bookId = id,
+    kind = kind,
 )

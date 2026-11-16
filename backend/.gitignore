@@ -42,6 +42,9 @@ out/
 ### Local notes ###
 docs/roadmap.md
 
+### Claude Code (local run configs and settings) ###
+.claude/
+
 ### Local config & secrets ###
 .env
 *.env

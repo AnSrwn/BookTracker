@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Positive
 
-data class CreateBookRequest(
+data class CreatePrivateBookRequest(
     @field:NotBlank val title: String,
     @field:NotEmpty val authors: List<@NotBlank String>,
     val publisher: String? = null,

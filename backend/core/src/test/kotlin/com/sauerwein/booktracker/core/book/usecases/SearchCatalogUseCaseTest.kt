@@ -2,6 +2,7 @@ package com.sauerwein.booktracker.core.book.usecases
 
 import com.sauerwein.booktracker.core.book.FakeBookMetadataSource
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
+import com.sauerwein.booktracker.core.book.models.BookKind
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
@@ -12,6 +13,7 @@ import java.time.Clock
 import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val MIN_LOCAL_HITS = 2
@@ -22,8 +24,10 @@ class SearchCatalogUseCaseTest {
     private val otherUser = UserId(UUID.randomUUID())
     private val bookRepository = InMemoryBookRepository()
 
+    private val upsertCatalogEntry = UpsertCatalogEntryUseCase(bookRepository, Clock.systemUTC())
+
     private fun useCase(source: FakeBookMetadataSource) = SearchCatalogUseCase(
-        resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, CatalogUpsertUseCase(bookRepository, Clock.systemUTC())),
+        resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsertCatalogEntry),
         bookRepository = bookRepository,
         bookMetadataSource = source,
         currentUserProvider = { user },
@@ -32,7 +36,10 @@ class SearchCatalogUseCaseTest {
 
     @Test
     fun `runs a text search for ordinary words`() {
-        val hits = listOf(testCandidate(title = "Eragon"), testCandidate(title = "Eldest"))
+        val hits = listOf(
+            testCandidate(title = "Eragon"),
+            testCandidate(title = "Eldest", sourceId = SourceRecordId("test-record-2"))
+        )
         val source = FakeBookMetadataSource(searchResults = hits)
 
         assertEquals(hits, useCase(source)("eragon"))
@@ -46,7 +53,7 @@ class SearchCatalogUseCaseTest {
         val candidate = testCandidate(title = "Eragon", isbn = Isbn.of("9783570402931"))
         val source = FakeBookMetadataSource(isbnResult = candidate)
 
-        assertEquals(listOf(candidate), useCase(source)("978-3-570-40293-1"))
+        assertEquals(listOf("Eragon"), useCase(source)("978-3-570-40293-1").map { it.title })
         assertEquals(listOf(Isbn.of("9783570402931")), source.lookedUpIsbns)
         assertEquals(emptyList(), source.searchedTexts)
     }
@@ -80,8 +87,8 @@ class SearchCatalogUseCaseTest {
 
     @Test
     fun `answers from the catalog alone once it has enough hits`() {
-        bookRepository.add(testBook(ownerId = null, title = "Eragon"))
-        bookRepository.add(testBook(ownerId = user, title = "Eragon, signed"))
+        bookRepository.seed(testBook(ownerId = null, title = "Eragon"))
+        bookRepository.seed(testBook(ownerId = user, title = "Eragon, signed"))
         val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon")))
 
         val titles = useCase(source)("eragon").map { it.title }
@@ -93,7 +100,14 @@ class SearchCatalogUseCaseTest {
     @Test
     fun `puts local hits first and drops source hits for the same record`() {
         val source = SourceId.of("open_library")
-        bookRepository.add(testBook(ownerId = null, title = "Eragon", source = source, sourceId = SourceRecordId("OL1M")))
+        bookRepository.seed(
+            testBook(
+                ownerId = null,
+                title = "Eragon",
+                source = source,
+                sourceId = SourceRecordId("OL1M")
+            )
+        )
         val metadataSource = FakeBookMetadataSource(
             searchResults = listOf(
                 testCandidate(title = "Eragon (remote copy)", source = source, sourceId = SourceRecordId("OL1M")),
@@ -109,7 +123,7 @@ class SearchCatalogUseCaseTest {
 
     @Test
     fun `matches every word across title and authors`() {
-        bookRepository.add(testBook(ownerId = null, title = "Eragon", author = "Christopher Paolini"))
+        bookRepository.seed(testBook(ownerId = null, title = "Eragon", author = "Christopher Paolini"))
         val source = FakeBookMetadataSource()
 
         assertEquals(listOf("Eragon"), useCase(source)("eragon paolini").map { it.title })
@@ -117,19 +131,44 @@ class SearchCatalogUseCaseTest {
 
     @Test
     fun `never returns another user's private book`() {
-        bookRepository.add(testBook(ownerId = otherUser, title = "Eragon"))
-        bookRepository.add(testBook(ownerId = otherUser, title = "Eragon II"))
+        bookRepository.seed(testBook(ownerId = otherUser, title = "Eragon"))
+        bookRepository.seed(testBook(ownerId = otherUser, title = "Eragon II"))
         val source = FakeBookMetadataSource()
 
         assertTrue(useCase(source)("eragon").isEmpty())
     }
 
+    /** D27: search only reads. A hit enters the catalog when a user adds it, from the full record. */
     @Test
-    fun `never stores text search results`() {
-        val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon")))
+    fun `never stores a source hit, not even one with an ISBN`() {
+        val hit = testCandidate(title = "Eragon", isbn = Isbn.of("9780375826689"))
+        val source = FakeBookMetadataSource(searchResults = listOf(hit))
 
-        useCase(source)("eragon")
-
+        assertEquals(listOf(hit), useCase(source)("eragon"))
         assertTrue(bookRepository.stored().isEmpty())
+    }
+
+    @Test
+    fun `leaves source hits without a stored id`() {
+        val source = FakeBookMetadataSource(searchResults = listOf(testCandidate(title = "Eragon", isbn = Isbn.of("9780375826689"))))
+
+        val hit = useCase(source)("eragon").single()
+
+        assertNull(hit.bookId)
+        assertNull(hit.kind)
+    }
+
+    @Test
+    fun `local hits carry their id and kind`() {
+        val catalogBook = testBook(ownerId = null, title = "Eragon")
+        val ownBook = testBook(ownerId = user, title = "Eragon, signed")
+        bookRepository.seed(catalogBook, ownBook)
+
+        val hits = useCase(FakeBookMetadataSource())("eragon").associateBy { it.title }
+
+        assertEquals(catalogBook.id, hits.getValue("Eragon").bookId)
+        assertEquals(BookKind.CATALOG, hits.getValue("Eragon").kind)
+        assertEquals(ownBook.id, hits.getValue("Eragon, signed").bookId)
+        assertEquals(BookKind.PRIVATE, hits.getValue("Eragon, signed").kind)
     }
 }

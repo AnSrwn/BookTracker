@@ -11,8 +11,8 @@ private const val LOCAL_SEARCH_LIMIT = 20
 
 /**
  * Local hits first. With at least [minLocalHits] of them the source is not asked at all;
- * with fewer, the source's hits are appended. Text results are never upserted — a search
- * hit is a thin record nobody has chosen yet.
+ * with fewer, the source's hits are appended. Search only reads (D27): a source hit is stored
+ * when a user adds it, from the full record — never as the thin record a search returns.
  */
 class SearchCatalogUseCase(
     private val resolveIsbnUseCase: ResolveIsbnUseCase,

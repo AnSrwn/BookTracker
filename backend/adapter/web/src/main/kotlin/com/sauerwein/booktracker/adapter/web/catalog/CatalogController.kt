@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.adapter.web.catalog
 
 import com.sauerwein.booktracker.adapter.web.catalog.dtos.BookCandidateResponse
+import com.sauerwein.booktracker.core.book.CatalogHitIds
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.usecases.FindBookByIsbnUseCase
 import com.sauerwein.booktracker.core.book.usecases.SearchCatalogUseCase
@@ -15,14 +16,15 @@ private const val CATALOG_PATH = "catalog"
 class CatalogController(
     private val searchCatalogUseCase: SearchCatalogUseCase,
     private val findBookByIsbnUseCase: FindBookByIsbnUseCase,
+    private val catalogHitIds: CatalogHitIds,
 ) {
     @GetMapping("/search")
     fun search(@RequestParam @NotBlank query: String): List<BookCandidateResponse> {
-        return searchCatalogUseCase(rawQuery = query).map { it.toResponse() }
+        return searchCatalogUseCase(rawQuery = query).map { it.toResponse(catalogHitIds) }
     }
 
     @GetMapping("/isbn/{isbn}")
     fun findByIsbn(@PathVariable isbn: String): BookCandidateResponse {
-        return findBookByIsbnUseCase(isbn = Isbn.of(rawValue = isbn)).toResponse()
+        return findBookByIsbnUseCase(isbn = Isbn.of(rawValue = isbn)).toResponse(catalogHitIds)
     }
 }

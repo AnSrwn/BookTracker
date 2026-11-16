@@ -15,6 +15,8 @@ services:
       # Required: a wrong issuer would only surface on the first request carrying a token.
       BOOKTRACKER_ISSUER_URI: ${BOOKTRACKER_ISSUER_URI:?BOOKTRACKER_ISSUER_URI must be set}
       BOOKTRACKER_BOOKDATA_USER_AGENT: ${BOOKTRACKER_BOOKDATA_USER_AGENT:?BOOKTRACKER_BOOKDATA_USER_AGENT must be set}
+      # Required: without it every instance and every restart signs search hit ids differently.
+      BOOKTRACKER_CATALOG_HIT_ID_SECRET: ${BOOKTRACKER_CATALOG_HIT_ID_SECRET:?BOOKTRACKER_CATALOG_HIT_ID_SECRET must be set}
     depends_on:
       postgres:
         condition: service_healthy

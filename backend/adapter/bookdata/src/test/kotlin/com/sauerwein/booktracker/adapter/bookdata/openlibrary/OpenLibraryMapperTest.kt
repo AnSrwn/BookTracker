@@ -73,7 +73,8 @@ class OpenLibraryMapperTest {
     /** The licence bit travels with the record, so it must come from the descriptor, not be hardcoded. */
     @Test
     fun `takes source and licence from the descriptor`() {
-        val descriptor = OpenLibraryClient.DESCRIPTOR.copy(id = SourceId.of("other"), persistableInPublicCatalog = false)
+        val descriptor =
+            OpenLibraryClient.DESCRIPTOR.copy(id = SourceId.of("other"), persistableInPublicCatalog = false)
         val mapper = OpenLibraryMapper(descriptor)
         val doc = OpenLibrarySearchDoc(title = "Eragon", authorName = listOf("Christopher Paolini"))
 
@@ -103,7 +104,16 @@ class OpenLibraryMapperTest {
 
         assertEquals(SourceRecordId("OL5819895W"), map(withWork)?.workKey)
         assertNull(map(withJunk)?.workKey)
-        assertEquals(SourceRecordId("OL5819895W"), mapper.toCandidate(OpenLibrarySearchDoc(key = "/works/OL5819895W", title = "Eragon", authorName = listOf("Christopher Paolini")))?.workKey)
+        assertEquals(
+            SourceRecordId("OL5819895W"),
+            mapper.toCandidate(
+                OpenLibrarySearchDoc(
+                    key = "/works/OL5819895W",
+                    title = "Eragon",
+                    authorName = listOf("Christopher Paolini")
+                )
+            )?.workKey
+        )
     }
 
     @Test
@@ -115,7 +125,10 @@ class OpenLibraryMapperTest {
         )
 
         assertEquals(
-            listOf(Author("Terry Pratchett", openLibraryRef("OL25712A")), Author("Neil Gaiman", openLibraryRef("OL1393655A"))),
+            listOf(
+                Author("Terry Pratchett", openLibraryRef("OL25712A")),
+                Author("Neil Gaiman", openLibraryRef("OL1393655A"))
+            ),
             mapper.toCandidate(doc)?.authors,
         )
     }
@@ -153,9 +166,137 @@ class OpenLibraryMapperTest {
     @Test
     fun `credits author keys to the descriptor's source`() {
         val descriptor = OpenLibraryClient.DESCRIPTOR.copy(id = SourceId.of("other"))
-        val doc = OpenLibrarySearchDoc(title = "Eragon", authorName = listOf("Christopher Paolini"), authorKey = listOf("OL1425963A"))
+        val doc = OpenLibrarySearchDoc(
+            title = "Eragon",
+            authorName = listOf("Christopher Paolini"),
+            authorKey = listOf("OL1425963A")
+        )
 
-        assertEquals(SourceId.of("other"), OpenLibraryMapper(descriptor).toCandidate(doc)?.authors?.single()?.ref?.source)
+        assertEquals(
+            SourceId.of("other"),
+            OpenLibraryMapper(descriptor).toCandidate(doc)?.authors?.single()?.ref?.source
+        )
+    }
+
+    // Search hits, edition-level — values as in fixtures/openlibrary-search.json
+
+    private fun searchDoc(vararg editions: OpenLibrarySearchEdition, title: String = "Eragon") = OpenLibrarySearchDoc(
+        key = "/works/OL5819895W",
+        title = title,
+        authorName = listOf("Christopher Paolini"),
+        authorKey = listOf("OL1425963A"),
+        firstPublishYear = 2000,
+        coverId = 13921600,
+        editions = OpenLibrarySearchEditions(docs = editions.toList()),
+    )
+
+    /** Review finding 3: year, cover and publisher of the matched edition, never the work's (another edition's). */
+    @Test
+    fun `takes year, cover and publisher of a search hit from its matching edition`() {
+        val doc = searchDoc(
+            OpenLibrarySearchEdition(
+                key = "/books/OL22650690M",
+                title = "Eragon",
+                isbn = listOf("9780375840548"),
+                publishYear = listOf(2006),
+                coverId = 14829791,
+                publisher = listOf("Knopf", "Knopf Books for Young Readers"),
+            ),
+        )
+
+        val candidate = mapper.toCandidate(doc)
+
+        assertEquals(2006, candidate?.publicationYear)
+        assertEquals("https://covers.openlibrary.org/b/id/14829791-L.jpg?default=false", candidate?.coverUrl)
+        assertEquals("Knopf", candidate?.publisher)
+    }
+
+    @Test
+    fun `leaves year and cover empty when the matching edition has none, rather than borrowing the work's`() {
+        val candidate = mapper.toCandidate(searchDoc(OpenLibrarySearchEdition(key = "/books/OL40346106M", title = "Eragon; Eldest")))
+
+        assertNull(candidate?.publicationYear)
+        assertNull(candidate?.coverUrl)
+        assertNull(candidate?.publisher)
+    }
+
+    @Test
+    fun `falls back to the work's year and cover only for a hit without an edition`() {
+        val candidate = mapper.toCandidate(searchDoc())
+
+        assertEquals(2000, candidate?.publicationYear)
+        assertEquals("https://covers.openlibrary.org/b/id/13921600-L.jpg?default=false", candidate?.coverUrl)
+    }
+
+    @Test
+    fun `takes sourceId and ISBN of a search hit from its matching edition`() {
+        val doc = searchDoc(
+            OpenLibrarySearchEdition(
+                key = "/books/OL22650690M",
+                title = "Eragon",
+                isbn = listOf("0375840540", "9780375840548", "9781428709546"),
+            ),
+        )
+
+        val candidate = mapper.toCandidate(doc)
+
+        assertEquals(SourceRecordId("OL22650690M"), candidate?.sourceId)
+        assertEquals(Isbn.of("9780375840548"), candidate?.isbn)
+        assertEquals(SourceRecordId("OL5819895W"), candidate?.workKey)
+    }
+
+    /** The *Brisingr* work matched a Russian *Eragon* edition: the row must describe that edition, not the work. */
+    @Test
+    fun `uses the edition's own title`() {
+        val doc = searchDoc(
+            OpenLibrarySearchEdition(key = "/books/OL37762833M", title = "Ėragon", isbn = listOf("9785353041351")),
+            title = "Brisingr",
+        )
+
+        assertEquals("Ėragon", mapper.toCandidate(doc)?.title)
+    }
+
+    @Test
+    fun `has no ISBN when the edition lists none`() {
+        val candidate =
+            mapper.toCandidate(searchDoc(OpenLibrarySearchEdition(key = "/books/OL22650690M", title = "Eragon")))
+
+        assertEquals(SourceRecordId("OL22650690M"), candidate?.sourceId)
+        assertNull(candidate?.isbn)
+    }
+
+    /** Without an edition there is nothing edition-level to store; the hit stays a suggestion. */
+    @Test
+    fun `has neither sourceId nor ISBN without a matching edition`() {
+        val candidate = mapper.toCandidate(searchDoc())
+
+        assertEquals("Eragon", candidate?.title)
+        assertNull(candidate?.sourceId)
+        assertNull(candidate?.isbn)
+    }
+
+    /** An ISBN is only kept together with the edition key it belongs to. */
+    @Test
+    fun `drops a malformed edition key, and the ISBN with it`() {
+        val candidate = mapper.toCandidate(
+            searchDoc(
+                OpenLibrarySearchEdition(
+                    key = "/books/../admin",
+                    title = "Eragon",
+                    isbn = listOf("9780375840548")
+                )
+            ),
+        )
+
+        assertNull(candidate?.sourceId)
+        assertNull(candidate?.isbn)
+    }
+
+    @Test
+    fun `accepts a bare or prefixed edition id and nothing else`() {
+        assertEquals(SourceRecordId("OL22650690M"), editionIdOrNull("OL22650690M"))
+        assertEquals(SourceRecordId("OL22650690M"), editionIdOrNull("/books/OL22650690M"))
+        listOf("OL22650690W", "../admin", "OL1M/../x", "").forEach { assertNull(editionIdOrNull(it), "accepted '$it'") }
     }
 
     private fun map(edition: OpenLibraryEdition) = mapper.toCandidate(edition, listOf(PAOLINI))

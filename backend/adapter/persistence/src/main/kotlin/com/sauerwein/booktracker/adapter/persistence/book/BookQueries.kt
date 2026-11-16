@@ -19,14 +19,23 @@ private const val MATCHES_TEXT = """
 
 interface BookQueries : Repository<BookEntity, UUID> {
 
-    @Query("SELECT * FROM book WHERE $VISIBLE")
-    fun findAllVisible(@Param("ownerId") ownerId: UUID): List<BookEntity>
+    /** Only what is linked to the user — never the whole catalog, unlike [VISIBLE]. */
+    @Query(
+        """SELECT book.* FROM book
+           JOIN user_book ub ON ub.book_id = book.id
+           WHERE ub.user_id = :userId
+           ORDER BY ub.created_at DESC, book.id"""
+    )
+    fun findLibrary(@Param("userId") userId: UUID): List<BookEntity>
 
     @Query("SELECT * FROM book WHERE id = :id AND $VISIBLE")
     fun findVisible(@Param("id") id: UUID, @Param("ownerId") ownerId: UUID): BookEntity?
 
     @Query("SELECT * FROM book WHERE isbn = :isbn AND $APPROVED_CATALOG")
     fun findCatalogByIsbn(@Param("isbn") isbn: String): BookEntity?
+
+    @Query("SELECT * FROM book WHERE source = :source AND source_id = :sourceId AND $APPROVED_CATALOG")
+    fun findCatalogBySource(@Param("source") source: String, @Param("sourceId") sourceId: String): BookEntity?
 
     @Query("SELECT * FROM book WHERE $VISIBLE AND $MATCHES_TEXT ORDER BY title LIMIT :limit")
     fun searchVisible(

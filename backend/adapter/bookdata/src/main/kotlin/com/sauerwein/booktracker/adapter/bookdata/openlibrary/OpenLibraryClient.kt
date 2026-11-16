@@ -2,19 +2,18 @@ package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 
 import com.sauerwein.booktracker.adapter.bookdata.resilience.BookSourceException
 import com.sauerwein.booktracker.core.book.BookMetadataSource
-import com.sauerwein.booktracker.core.book.models.Author
-import com.sauerwein.booktracker.core.book.models.BookCandidate
-import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceDescriptor
-import com.sauerwein.booktracker.core.book.models.SourceId
-import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import com.sauerwein.booktracker.core.book.models.*
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClient.RequestHeadersSpec.ConvertibleClientHttpResponse
 
 private const val SEARCH_LIMIT = 10
-private const val SEARCH_FIELDS = "key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key"
+
+/** `editions…` makes every hit edition-level: one matching edition with its own key and ISBNs. */
+private const val SEARCH_FIELDS =
+    "key,title,author_name,author_key,first_publish_year,cover_i," +
+        "editions,editions.key,editions.title,editions.isbn,editions.publish_year,editions.cover_i,editions.publisher"
 
 /** Every author is one more request — and at 1 req/s one more second of scan latency. */
 private const val MAX_RESOLVED_AUTHORS = 2
@@ -50,19 +49,34 @@ class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource
     }
 
     override fun findByIsbn(isbn: Isbn): BookCandidate? {
-        val editionResponse = restClient.get()
+        val edition = restClient.get()
             .uri("/isbn/{isbn}.json", isbn.value)
             .exchange { _, response -> response.readJsonOrNull<OpenLibraryEdition>() }
             ?: return null
 
+        return toCandidate(edition)
+    }
+
+    /** An edition by its own key, e.g. a search hit the user adds. The id came back from our app: validate before it goes into a path. */
+    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? {
+        val editionId = editionIdOrNull(recordId.value) ?: return null
+        val edition = restClient.get()
+            .uri("/books/{id}.json", editionId.value)
+            .exchange { _, response -> response.readJsonOrNull<OpenLibraryEdition>() }
+            ?: return null
+
+        return toCandidate(edition)
+    }
+
+    private fun toCandidate(edition: OpenLibraryEdition): BookCandidate? {
         // An author that cannot be resolved is skipped; the mapper drops the record only if none is left.
         // The keys are third-party data: only a validated id goes into a path, never the raw key
-        val authors = editionResponse.authors.orEmpty()
+        val authors = edition.authors.orEmpty()
             .mapNotNull { it.key?.let(::authorIdOrNull) }
             .take(MAX_RESOLVED_AUTHORS)
             .mapNotNull(::findAuthor)
 
-        return mapper.toCandidate(editionResponse, authors)
+        return mapper.toCandidate(edition = edition, authors = authors)
     }
 
     private fun findAuthor(authorId: SourceRecordId): Author? {

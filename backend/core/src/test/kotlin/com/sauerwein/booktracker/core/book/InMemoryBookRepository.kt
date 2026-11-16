@@ -3,28 +3,53 @@ package com.sauerwein.booktracker.core.book
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.SourceId
+import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
 import com.sauerwein.booktracker.core.user.UserId
+import java.time.Instant
 
 /** Mirrors the rules the SQL and the unique indexes apply; a fake that skipped them would make the use case tests meaningless. */
 class InMemoryBookRepository : BookRepository {
     private val books = mutableMapOf<BookId, Book>()
+    private val links = mutableListOf<Link>()
 
-    override fun add(book: Book) {
-        requireUniqueIsbn(book)
+    /** Catalog rows a review set to PENDING or REJECTED; every catalog read skips them (`APPROVED_CATALOG`). */
+    private val unapproved = mutableSetOf<BookId>()
+
+    private data class Link(val user: UserId, val bookId: BookId, val at: Instant)
+
+    override fun addPrivateBook(book: Book) {
+        val owner = requireNotNull(book.ownerId) { "A private book needs an owner" }
         books[book.id] = book
+        links += Link(owner, book.id, book.createdAt)
     }
 
     override fun update(book: Book) {
-        requireUniqueIsbn(book)
+        requireUniqueCatalogIsbn(book)
         books[book.id] = book
     }
 
     override fun findVisible(id: BookId, user: UserId): Book? = books[id]?.takeIf { it.isVisibleTo(user) }
 
-    override fun findAllVisible(user: UserId): List<Book> = books.values.filter { it.isVisibleTo(user) }
+    override fun findLibrary(user: UserId): List<Book> =
+        links.filter { it.user == user }
+            .sortedByDescending { it.at }
+            .mapNotNull { books[it.bookId] }
 
-    override fun findCatalogByIsbn(isbn: Isbn): Book? = books.values.find { it.ownerId == null && it.isbn == isbn }
+    override fun addToLibrary(user: UserId, bookId: BookId, at: Instant) {
+        require(bookId in books) { "Foreign key violation: book $bookId does not exist" }
+        if (links.any { it.user == user && it.bookId == bookId }) {
+            throw ConflictException(code = "AlreadyInLibrary", message = "Book is already in your books")
+        }
+        links += Link(user, bookId, at)
+    }
+
+    override fun findCatalogByIsbn(isbn: Isbn): Book? =
+        books.values.find { it.isApprovedCatalogRow() && it.isbn == isbn }
+
+    override fun findCatalogBySource(source: SourceId, sourceId: SourceRecordId): Book? =
+        books.values.find { it.isApprovedCatalogRow() && it.source == source && it.sourceId == sourceId }
 
     override fun searchVisible(text: String, user: UserId, limit: Int): List<Book> {
         val words = text.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -38,24 +63,50 @@ class InMemoryBookRepository : BookRepository {
             .take(limit)
     }
 
-    override fun upsertCatalogEntry(book: Book): Book {
+    override fun upsertCatalogEntry(book: Book): Book? {
         val existing = books.values.find {
             it.ownerId == null && it.source == book.source && it.sourceId == book.sourceId
         }
+        // `DO UPDATE … WHERE review_state = 'APPROVED'`: a non-approved row stays untouched, nothing is returned
+        if (existing != null && existing.id in unapproved) return null
         val stored = existing?.let { book.copy(id = it.id, createdAt = it.createdAt) } ?: book
-        requireUniqueIsbn(stored)
+        requireUniqueCatalogIsbn(stored)
         books[stored.id] = stored
         return stored
     }
 
-    private fun Book.isVisibleTo(user: UserId) = ownerId == null || ownerId == user
+    private fun Book.isVisibleTo(user: UserId) = isApprovedCatalogRow() || ownerId == user
 
-    private fun requireUniqueIsbn(book: Book) {
-        if (book.isbn == null) return
-        val clash = books.values.any { it.id != book.id && it.ownerId == book.ownerId && it.isbn == book.isbn }
-        if (clash) throw ConflictException(code = "DuplicateBook", message = "Book with ISBN ${book.isbn.value} already exists")
+    private fun Book.isApprovedCatalogRow() = ownerId == null && id !in unapproved
+
+    /** `ux_book_catalog_isbn`: private books may repeat an ISBN, catalog rows may not. */
+    private fun requireUniqueCatalogIsbn(book: Book) {
+        if (book.isbn == null || book.ownerId != null) return
+        val clash = books.values.any { it.id != book.id && it.ownerId == null && it.isbn == book.isbn }
+        if (clash) throw ConflictException(
+            code = "DuplicateBook",
+            message = "Book with ISBN ${book.isbn.value} already exists"
+        )
+    }
+
+    /** Test-only: stores a row as it is, without linking it to anyone — a catalog row, or another user's data. */
+    fun seed(vararg seeded: Book) {
+        seeded.forEach {
+            requireUniqueCatalogIsbn(it)
+            books[it.id] = it
+        }
+    }
+
+    /** Test-only: a catalog row a review set to PENDING or REJECTED. */
+    fun seedUnapproved(book: Book) {
+        require(book.ownerId == null) { "Only catalog rows have a review state" }
+        seed(book)
+        unapproved += book.id
     }
 
     /** Test-only view of everything stored, to assert that nothing was written. */
     fun stored(): List<Book> = books.values.toList()
+
+    /** Test-only view of the links, as `(user, book)` pairs. */
+    fun links(): List<Pair<UserId, BookId>> = links.map { it.user to it.bookId }
 }
