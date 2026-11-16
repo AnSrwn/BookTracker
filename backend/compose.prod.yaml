@@ -17,6 +17,10 @@ services:
       BOOKTRACKER_BOOKDATA_USER_AGENT: ${BOOKTRACKER_BOOKDATA_USER_AGENT:?BOOKTRACKER_BOOKDATA_USER_AGENT must be set}
       # Required: without it every instance and every restart signs search hit ids differently.
       BOOKTRACKER_CATALOG_HIT_ID_SECRET: ${BOOKTRACKER_CATALOG_HIT_ID_SECRET:?BOOKTRACKER_CATALOG_HIT_ID_SECRET must be set}
+      # Passed through, not required here: with Google enabled and no key the app refuses to start
+      # with a clear message, and BOOKTRACKER_GOOGLE_BOOKS_ENABLED=false must still work without one.
+      BOOKTRACKER_GOOGLE_BOOKS_ENABLED: ${BOOKTRACKER_GOOGLE_BOOKS_ENABLED:-true}
+      BOOKTRACKER_GOOGLE_BOOKS_API_KEY: ${BOOKTRACKER_GOOGLE_BOOKS_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

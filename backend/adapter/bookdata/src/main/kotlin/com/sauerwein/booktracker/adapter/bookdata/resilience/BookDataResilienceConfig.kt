@@ -25,8 +25,8 @@ class BookDataResilienceConfig {
             .waitDurationInOpenState(Duration.ofSeconds(30))
             .permittedNumberOfCallsInHalfOpenState(2)
             .recordExceptions(BookSourceException::class.java, RestClientException::class.java)
-            // Our own throttle firing says nothing about the source's health
-            .ignoreExceptions(RequestNotPermitted::class.java)
+            // Our own throttle firing, or a spent quota, says nothing about the source's health
+            .ignoreExceptions(RequestNotPermitted::class.java, QuotaExhaustedException::class.java)
             .build()
     }
 

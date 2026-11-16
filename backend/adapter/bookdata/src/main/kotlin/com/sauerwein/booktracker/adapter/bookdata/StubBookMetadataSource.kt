@@ -1,13 +1,7 @@
 package com.sauerwein.booktracker.adapter.bookdata
 
 import com.sauerwein.booktracker.core.book.BookMetadataSource
-import com.sauerwein.booktracker.core.book.models.Author
-import com.sauerwein.booktracker.core.book.models.BookCandidate
-import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceDescriptor
-import com.sauerwein.booktracker.core.book.models.SourceId
-import com.sauerwein.booktracker.core.book.models.SourceRecordId
-import com.sauerwein.booktracker.core.book.models.SourceRef
+import com.sauerwein.booktracker.core.book.models.*
 
 /**
  * Hardcoded source for tests that need a well-behaved provider without a network
@@ -32,8 +26,8 @@ class StubBookMetadataSource : BookMetadataSource {
     override fun findByIsbn(isbn: Isbn): BookCandidate? =
         eragon.takeIf { it.isbn == isbn }
 
-    override fun findByRecordId(recordId: SourceRecordId): BookCandidate? =
-        eragon.takeIf { it.sourceId == recordId }
+    override fun findByRecordId(ref: SourceRef): BookCandidate? =
+        eragon.takeIf { ref.source == descriptor.id && it.sourceId == ref.recordId }
 
     private val eragon = BookCandidate(
         title = "Eragon – Das Vermächtnis der Drachenreiter",

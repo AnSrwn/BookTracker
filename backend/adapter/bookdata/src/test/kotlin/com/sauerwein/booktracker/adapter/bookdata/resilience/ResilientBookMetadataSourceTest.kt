@@ -2,11 +2,13 @@ package com.sauerwein.booktracker.adapter.bookdata.resilience
 
 import com.sauerwein.booktracker.adapter.bookdata.StubBookMetadataSource
 import com.sauerwein.booktracker.core.book.BookMetadataSource
+import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedException
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import com.sauerwein.booktracker.core.book.models.SourceRef
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.ratelimiter.RateLimiter
 import io.github.resilience4j.ratelimiter.RequestNotPermitted
@@ -100,12 +102,28 @@ class ResilientBookMetadataSourceTest {
         assertEquals(1, count("isbn", "error"))
     }
 
+    /** 9.7 D4: a spent quota is reported as such, so the composite can skip the provider instead of failing. */
+    @Test
+    fun `reports a spent quota as its own outcome without opening the circuit`() {
+        val delegate = FailingSource(QuotaExhaustedException("quota spent"))
+        val source = resilient(delegate)
+
+        repeat(10) {
+            val e = assertFailsWith<SourceQuotaExhaustedException> { source.search("eragon") }
+            assertEquals(SourceId.of("stub"), e.source)
+        }
+
+        assertEquals(CircuitBreaker.State.CLOSED, circuitBreaker.state)
+        assertEquals(10, count("search", "quota_exhausted"))
+        assertEquals(0, count("search", "error"))
+    }
+
     /** Adding a search hit fetches the full record: an outage there must be a 503 too, tagged as its own operation. */
     @Test
     fun `reports an outage on a record lookup as unavailable`() {
         val source = resilient(FailingSource(TestSourceException()))
 
-        assertFailsWith<SourceUnavailableException> { source.findByRecordId(SourceRecordId("1055026991")) }
+        assertFailsWith<SourceUnavailableException> { source.findByRecordId(SourceRef(SourceId.of("stub"), SourceRecordId("1055026991"))) }
         assertEquals(1, count("record", "error"))
     }
 
@@ -125,7 +143,7 @@ class ResilientBookMetadataSourceTest {
             throw failure
         }
 
-        override fun findByRecordId(recordId: SourceRecordId): BookCandidate? {
+        override fun findByRecordId(ref: SourceRef): BookCandidate? {
             calls++
             throw failure
         }

@@ -1,0 +1,246 @@
+{
+  "items": [
+    {
+      "id": "u37TzwEACAAJ",
+      "volumeInfo": {
+        "title": "Christopher Paolini: Eragon. Vier Bände im Taschenbuch-Schuber: Das Vermächtnis der Drachenreiter, Der Auftrag der Ältesten, Die Weisheit des Feuers, Das Erbe der Macht",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publishedDate": "2023-09-13",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_10",
+            "identifier": "3570316440"
+          },
+          {
+            "type": "ISBN_13",
+            "identifier": "9783570316443"
+          }
+        ],
+        "pageCount": 0
+      }
+    },
+    {
+      "id": "_tiYRR30oe0C",
+      "volumeInfo": {
+        "title": "Eragon - Die Weisheit des Feuers",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2009-04-01",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641023041"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641023041"
+          }
+        ],
+        "pageCount": 679,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=_tiYRR30oe0C&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "wYAkAQAAMAAJ",
+      "volumeInfo": {
+        "title": "Eragon",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "Knopf Books for Young Readers",
+        "publishedDate": "2003",
+        "industryIdentifiers": [
+          {
+            "type": "OTHER",
+            "identifier": "UOM:39076002505696"
+          }
+        ],
+        "pageCount": 552,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=wYAkAQAAMAAJ&printsec=frontcover&img=1&zoom=1&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "ikq9EAAAQBAJ",
+      "volumeInfo": {
+        "title": "Eragon Band 1-4: Das Vermächtnis der Drachenreiter / Der Auftrag des Ältesten / Die Weisheit des Feuers / Das Erbe der Macht (4in1-Bundle)",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2023-08-01",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641314491"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641314496"
+          }
+        ],
+        "pageCount": 3323,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=ikq9EAAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "GIx5DwAAQBAJ",
+      "volumeInfo": {
+        "title": "Die Gabel, die Hexe und der Wurm. Geschichten aus Alagaësia. Band 1: Eragon",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2019-01-21",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641248840"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641248841"
+          }
+        ],
+        "pageCount": 192,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=GIx5DwAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "1084qDfu6mcC",
+      "volumeInfo": {
+        "title": "Eragon - Das Erbe der Macht",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2011-11-19",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641071363"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641071364"
+          }
+        ],
+        "pageCount": 1010,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=1084qDfu6mcC&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "hymy2N8qokYC",
+      "volumeInfo": {
+        "title": "Eragon",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2009-03-11",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641023027"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641023025"
+          }
+        ],
+        "pageCount": 785,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=hymy2N8qokYC&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "A7tNhTnOZjgC",
+      "volumeInfo": {
+        "title": "Eragon - Der Auftrag des Ältesten",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2009-03-11",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641023034"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641023033"
+          }
+        ],
+        "pageCount": 607,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=A7tNhTnOZjgC&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "PN8AEQAAQBAJ",
+      "volumeInfo": {
+        "title": "Fractal Noise",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "Knaur eBook",
+        "publishedDate": "2024-10-01",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783426468548"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3426468549"
+          }
+        ],
+        "pageCount": 425,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=PN8AEQAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    },
+    {
+      "id": "hN-yEAAAQBAJ",
+      "volumeInfo": {
+        "title": "Murtagh - Eine dunkle Bedrohung",
+        "authors": [
+          "Christopher Paolini"
+        ],
+        "publisher": "cbj Verlag",
+        "publishedDate": "2023-11-07",
+        "industryIdentifiers": [
+          {
+            "type": "ISBN_13",
+            "identifier": "9783641312893"
+          },
+          {
+            "type": "ISBN_10",
+            "identifier": "3641312892"
+          }
+        ],
+        "pageCount": 812,
+        "imageLinks": {
+          "thumbnail": "http://books.google.com/books/content?id=hN-yEAAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        }
+      }
+    }
+  ]
+}

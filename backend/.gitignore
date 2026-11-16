@@ -49,6 +49,8 @@ docs/roadmap.md
 .env
 *.env
 application-local.yaml
+# Local secrets, e.g. the Google Books key; Spring loads ./config/application.yaml from the working dir
+/bootstrap/config/
 application-*-local.yaml
 compose.override.yaml
 

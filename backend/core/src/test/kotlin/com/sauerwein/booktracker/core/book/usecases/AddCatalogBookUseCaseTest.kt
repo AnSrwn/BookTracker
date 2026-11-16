@@ -35,13 +35,17 @@ class AddCatalogBookUseCaseTest {
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-11-16T10:00:00Z"), ZoneOffset.UTC)
 
-    private fun useCase(source: FakeBookMetadataSource = FakeBookMetadataSource()) = AddCatalogBookUseCase(
-        bookRepository = bookRepository,
-        bookMetadataSource = source,
-        upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(bookRepository, clock),
-        currentUserProvider = { userA },
-        clock = clock,
-    )
+    private fun useCase(source: FakeBookMetadataSource = FakeBookMetadataSource()): AddCatalogBookUseCase {
+        val upsert = UpsertCatalogEntryUseCase(bookRepository, clock)
+        return AddCatalogBookUseCase(
+            bookRepository = bookRepository,
+            bookMetadataSource = source,
+            upsertCatalogEntryUseCase = upsert,
+            resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsert),
+            currentUserProvider = { userA },
+            clock = clock,
+        )
+    }
 
     private val hit = CatalogBookRef.SourceRecord(TEST_SOURCE, RECORD)
 
@@ -192,12 +196,14 @@ class AddCatalogBookUseCaseTest {
         assertTrue(bookRepository.stored().isEmpty())
     }
 
+    /** The source routes by the ref's source (9.7): a record of a source that is not there is unknown. */
     @Test
-    fun `a hit naming another source is not found and asks no one`() {
+    fun `a hit naming another source is not found`() {
         val source = FakeBookMetadataSource(recordResult = testCandidate(isbn = ISBN))
 
         assertFailsWith<NotFoundException> { useCase(source)(CatalogBookRef.SourceRecord(SourceId.of("other"), RECORD)) }
         assertTrue(source.lookedUpRecordIds.isEmpty())
+        assertTrue(bookRepository.stored().isEmpty())
     }
 
     /** An outage is not "not found": the app can try again later. */
@@ -217,5 +223,76 @@ class AddCatalogBookUseCaseTest {
 
         assertFailsWith<ConflictException> { useCase(source)(hit) }
         assertEquals(1, bookRepository.stored().size)
+    }
+
+    // A hit whose data may not be stored, added by its ISBN (9.7 D1, D6)
+
+    private val byIsbn = CatalogBookRef.ByIsbn(ISBN)
+
+    @Test
+    fun `links the catalog book that already has the ISBN without asking the source`() {
+        val catalogBook = testBook(ownerId = null, isbn = ISBN, source = TEST_SOURCE, sourceId = RECORD)
+        bookRepository.seed(catalogBook)
+        val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = ISBN))
+
+        assertEquals(catalogBook, useCase(source)(byIsbn))
+        assertTrue(source.lookedUpIsbns.isEmpty())
+        assertEquals(listOf(userA to catalogBook.id), bookRepository.links())
+    }
+
+    /** E7: what enters the catalog is the CC0 record for the ISBN, never the hit the user saw. */
+    @Test
+    fun `resolves the ISBN like a scan, stores the CC0 record and links it`() {
+        val record = testCandidate(title = "Eragon", isbn = ISBN).copy(publisher = "Knopf", pageCount = 503)
+        val source = FakeBookMetadataSource(isbnResult = record)
+
+        val added = useCase(source)(byIsbn)
+
+        assertEquals(listOf(ISBN), source.lookedUpIsbns)
+        val stored = bookRepository.stored().single()
+        assertNull(stored.ownerId)
+        assertEquals(TEST_SOURCE, stored.source)
+        assertEquals("Knopf", stored.publisher)
+        assertEquals(stored, added)
+        assertEquals(listOf(userA to stored.id), bookRepository.links())
+    }
+
+    /** E7b: no CC0 source knows the ISBN. The app then opens an empty form (D9). */
+    @Test
+    fun `an ISBN no source knows is not found and stores nothing`() {
+        val source = FakeBookMetadataSource(isbnResult = null)
+
+        assertFailsWith<NotFoundException> { useCase(source)(byIsbn) }
+        assertTrue(bookRepository.stored().isEmpty())
+        assertTrue(bookRepository.links().isEmpty())
+    }
+
+    /** E7d / D6: a record that may not be stored is never stored, whatever path asks. */
+    @Test
+    fun `an answer the licence keeps out of the catalog is not found and not stored`() {
+        val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = ISBN, persistableInPublicCatalog = false))
+
+        assertFailsWith<NotFoundException> { useCase(source)(byIsbn) }
+        assertTrue(bookRepository.stored().isEmpty())
+    }
+
+    @Test
+    fun `an outage while resolving the ISBN fails the add and stores nothing`() {
+        val source = FakeBookMetadataSource(isbnFailure = SourceUnavailableException(TEST_SOURCE))
+
+        assertFailsWith<SourceUnavailableException> { useCase(source)(byIsbn) }
+        assertTrue(bookRepository.stored().isEmpty())
+        assertTrue(bookRepository.links().isEmpty())
+    }
+
+    @Test
+    fun `an ISBN held only by a non-approved row is not found and leaves the row alone`() {
+        val pending = testBook(ownerId = null, isbn = ISBN, source = TEST_SOURCE, sourceId = RECORD)
+        bookRepository.seedUnapproved(pending)
+        val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = ISBN))
+
+        assertFailsWith<NotFoundException> { useCase(source)(byIsbn) }
+        assertEquals(listOf(pending), bookRepository.stored())
+        assertTrue(bookRepository.links().isEmpty())
     }
 }
