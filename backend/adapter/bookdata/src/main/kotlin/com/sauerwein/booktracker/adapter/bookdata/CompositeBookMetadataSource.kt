@@ -49,7 +49,7 @@ class CompositeBookMetadataSource(
 
     override fun search(text: String): List<BookCandidate> {
         val outcome = Outcome()
-        val hits = searchProviders.flatMap { provider -> outcome.ask { provider.search(text) }.orEmpty() }
+        val hits = searchProviders.flatMap { provider -> outcome.ask(provider) { provider.search(text) }.orEmpty() }
 
         if (hits.isEmpty()) outcome.throwIfNobodyLooked()
         return hits
@@ -59,7 +59,7 @@ class CompositeBookMetadataSource(
     override fun findByIsbn(isbn: Isbn): BookCandidate? {
         val outcome = Outcome()
         for (provider in isbnProviders) {
-            outcome.ask { provider.findByIsbn(isbn) }?.let { return it }
+            outcome.ask(provider) { provider.findByIsbn(isbn) }?.let { return it }
         }
 
         outcome.throwIfNobodyLooked()
@@ -76,8 +76,19 @@ class CompositeBookMetadataSource(
         private val failures = mutableListOf<SourceUnavailableException>()
         private val skipped = mutableListOf<SourceQuotaExhaustedException>()
 
-        fun <T> ask(block: () -> T): T? =
-            try {
+        /**
+         * Once the request thread is interrupted (shutdown, or a cancelled call), no further provider
+         * is asked: its HTTP client would fail at once and a healthy source's circuit breaker would
+         * count that against it. The provider could not answer, so it counts like a failure here —
+         * hits found so far are still returned, otherwise the request is a 503 rather than a miss.
+         */
+        fun <T> ask(provider: BookMetadataSource, block: () -> T): T? {
+            if (Thread.currentThread().isInterrupted) {
+                failures += SourceUnavailableException(provider.descriptor.id, InterruptedException("Not asked: the request was interrupted"))
+                return null
+            }
+
+            return try {
                 block().also { answered++ }
             } catch (e: SourceQuotaExhaustedException) {
                 skipped += e
@@ -86,6 +97,7 @@ class CompositeBookMetadataSource(
                 failures += e
                 null
             }
+        }
 
         /**
          * Called when nothing was found. A failure means the book may exist (D4, D5); no clean

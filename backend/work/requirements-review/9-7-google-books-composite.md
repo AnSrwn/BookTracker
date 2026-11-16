@@ -215,5 +215,7 @@ All 7 findings checked against the code; all valid, all fixed on `feature/google
 | 6 | Unknown ids in `order` ignored silently | valid | WARN at startup; not a failure, since a disabled provider may stay listed |
 | 7 | `ProviderProperties.enabled` never read | valid, minor; "its default can disagree" is inaccurate (missing = off in both) | kept, documented as read by `@ConditionalOnProperty` |
 
-Verified: `./gradlew build` green, 200 unit tests (9 new). The cases are not reproducible live (spent quota, interrupt, concurrent trips); unit tests cover them.
+| 8 | (follow-up) An interrupt during Google's retry pause made Open Library fail too: its HTTP client throws "Request was interrupted" (`ResourceAccessException`), which its circuit breaker records against a healthy source | valid, minor (only on interrupts) — checked in `JdkClientHttpRequest` and Resilience4j's `AtomicRateLimiter` | the composite asks no further provider once the thread is interrupted; those count as unable to answer, so hits so far are returned, else 503 |
+
+Verified: `./gradlew build` green, 203 unit tests (12 new). The cases are not reproducible live (spent quota, interrupt, concurrent trips); unit tests cover them.
 

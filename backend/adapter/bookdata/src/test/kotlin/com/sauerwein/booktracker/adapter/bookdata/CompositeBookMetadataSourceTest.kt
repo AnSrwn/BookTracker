@@ -214,6 +214,62 @@ class CompositeBookMetadataSourceTest {
         assertEquals(1, e.suppressed.size)
     }
 
+    // Interrupts (code review): a provider asked on an interrupted thread fails at once, and its
+    // circuit breaker would count a healthy source as failing
+
+    /** The first provider is interrupted during its retry pause, as GoogleBooksClient does. */
+    private fun interruptedProvider(id: SourceId) = object : BookMetadataSource by FakeProvider(id) {
+        override fun search(text: String): List<BookCandidate> {
+            Thread.currentThread().interrupt()
+            throw down(id)
+        }
+
+        override fun findByIsbn(isbn: Isbn): BookCandidate? {
+            Thread.currentThread().interrupt()
+            throw down(id)
+        }
+    }
+
+    private fun <T> onInterruptibleThread(block: () -> T): T =
+        try {
+            block()
+        } finally {
+            Thread.interrupted()
+        }
+
+    @Test
+    fun `asks no further provider once the request is interrupted`() {
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
+        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(FINDER), library), listOf(FINDER, LIBRARY), emptyList())
+
+        onInterruptibleThread {
+            val e = assertFailsWith<SourceUnavailableException> { composite.search("eragon") }
+
+            assertEquals(FINDER, e.source)
+            assertTrue(Thread.currentThread().isInterrupted)
+        }
+        assertTrue(library.calls.isEmpty())
+    }
+
+    @Test
+    fun `keeps the hits found before the interrupt`() {
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
+        val composite = CompositeBookMetadataSource(listOf(library, interruptedProvider(FINDER), FakeProvider(ARCHIVE)), listOf(LIBRARY, FINDER, ARCHIVE), emptyList())
+
+        val titles = onInterruptibleThread { composite.search("eragon").map { it.title } }
+
+        assertEquals(listOf("Eragon"), titles)
+    }
+
+    @Test
+    fun `asks no further ISBN provider once the request is interrupted`() {
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon"))
+        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(LIBRARY), archive), emptyList(), listOf(LIBRARY, ARCHIVE))
+
+        onInterruptibleThread { assertFailsWith<SourceUnavailableException> { composite.findByIsbn(ISBN) } }
+        assertTrue(archive.calls.isEmpty())
+    }
+
     /** A bug in a provider is not an outage and stays a 500. */
     @Test
     fun `does not swallow an unexpected exception`() {
