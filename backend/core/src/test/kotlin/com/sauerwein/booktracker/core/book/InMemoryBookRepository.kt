@@ -63,16 +63,17 @@ class InMemoryBookRepository : BookRepository {
             .take(limit)
     }
 
-    override fun upsertCatalogEntry(book: Book): Book? {
+    override fun storeCatalogEntry(book: Book): Book? {
         val existing = books.values.find {
             it.ownerId == null && it.source == book.source && it.sourceId == book.sourceId
         }
-        // `DO UPDATE … WHERE review_state = 'APPROVED'`: a non-approved row stays untouched, nothing is returned
+        // Only an approved row is handed out; a non-approved one stays untouched and nothing is returned
         if (existing != null && existing.id in unapproved) return null
-        val stored = existing?.let { book.copy(id = it.id, createdAt = it.createdAt) } ?: book
-        requireUniqueCatalogIsbn(stored)
-        books[stored.id] = stored
-        return stored
+        // `ON CONFLICT … DO NOTHING`: a stored row is returned as it is, never refreshed (9.9 Q16)
+        if (existing != null) return existing
+        requireUniqueCatalogIsbn(book)
+        books[book.id] = book
+        return book
     }
 
     private fun Book.isVisibleTo(user: UserId) = isApprovedCatalogRow() || ownerId == user

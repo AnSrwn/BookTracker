@@ -27,4 +27,6 @@ data class BookCandidateResponse(
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
+    /** The edition's language as a BCP 47 language subtag (`de`, `en`), `null` where unknown. */
+    val language: String?,
 )

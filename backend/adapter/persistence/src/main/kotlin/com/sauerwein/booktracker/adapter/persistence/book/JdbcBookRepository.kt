@@ -27,26 +27,20 @@ private const val INSERT_LINK = """
     INSERT INTO user_book (user_id, book_id, created_at)
     VALUES (:userId, :bookId, :createdAt)"""
 
-/** Spring Data JDBC has no upsert; ON CONFLICT is the native-SQL path ADR-002 leaves open. */
-private const val UPSERT_CATALOG_ENTRY = """
+/**
+ * Inserts a catalog row, or does nothing if the record is already stored: a stored row is never
+ * refreshed by a lookup (9.9 Q16), so a merge that one provider's outage left short cannot erase
+ * what an earlier, fuller merge stored. The `ON CONFLICT` on `(source, source_id)` keeps two
+ * concurrent lookups of one record to one row; the ISBN index still rejects a second record with
+ * the same ISBN.
+ */
+private const val INSERT_CATALOG_ENTRY = """
     INSERT INTO book (id, owner_id, title, publisher, isbn, publication_year, page_count, cover_url,
-                      source, source_id, source_fetched_at, work_key, created_at, updated_at)
+                      language, source, source_id, source_fetched_at, work_key, created_at, updated_at)
     VALUES (:id, NULL, :title, :publisher, :isbn, :publicationYear, :pageCount, :coverUrl,
-            :source, :sourceId, :sourceFetchedAt, :workKey, :createdAt, :updatedAt)
-    ON CONFLICT (source, source_id) WHERE owner_id IS NULL DO UPDATE SET
-        title = EXCLUDED.title,
-        publisher = EXCLUDED.publisher,
-        isbn = EXCLUDED.isbn,
-        publication_year = EXCLUDED.publication_year,
-        page_count = EXCLUDED.page_count,
-        cover_url = EXCLUDED.cover_url,
-        source_fetched_at = EXCLUDED.source_fetched_at,
-        work_key = EXCLUDED.work_key,
-        updated_at = EXCLUDED.updated_at
-    -- Only approved rows are refreshed. A PENDING or REJECTED row stays as the review left it,
-    -- and RETURNING then yields no row: the caller gets nothing to link or hand out.
-    WHERE book.review_state = 'APPROVED'
-    RETURNING id, created_at"""
+            :language, :source, :sourceId, :sourceFetchedAt, :workKey, :createdAt, :updatedAt)
+    ON CONFLICT (source, source_id) WHERE owner_id IS NULL DO NOTHING
+    RETURNING id"""
 
 private const val DELETE_AUTHORS = "DELETE FROM book_author WHERE book_id = :bookId"
 
@@ -114,11 +108,11 @@ class JdbcBookRepository(
         return bookQueries.searchVisible(text = text, ownerId = user.value, limit = limit).map { it.toDomain() }
     }
 
-    override fun upsertCatalogEntry(book: Book): Book? = write(conflict = DUPLICATE_BOOK) {
-        require(book.ownerId == null) { "Only public catalog rows are upserted" }
+    override fun storeCatalogEntry(book: Book): Book? = write(conflict = DUPLICATE_BOOK) {
+        require(book.ownerId == null) { "Only public catalog rows are stored here" }
         val entity = book.toEntity()
 
-        val stored = jdbcClient.sql(UPSERT_CATALOG_ENTRY)
+        val inserted = jdbcClient.sql(INSERT_CATALOG_ENTRY)
             .param("id", entity.id)
             .param("title", entity.title)
             .param("publisher", entity.publisher)
@@ -126,19 +120,22 @@ class JdbcBookRepository(
             .param("publicationYear", entity.publicationYear)
             .param("pageCount", entity.pageCount)
             .param("coverUrl", entity.coverUrl)
+            .param("language", entity.language)
             .param("source", entity.source)
             .param("sourceId", entity.sourceId)
             .param("sourceFetchedAt", entity.sourceFetchedAt?.let(Timestamp::from))
             .param("workKey", entity.workKey)
             .param("createdAt", Timestamp.from(entity.createdAt))
             .param("updatedAt", Timestamp.from(entity.updatedAt))
-            .query { rs, _ -> rs.getObject("id", UUID::class.java) to rs.getTimestamp("created_at").toInstant() }
+            .query(UUID::class.java)
             .optional()
 
-        // Empty: the record exists as a non-approved row, which this write must not touch
-        stored.orElse(null)?.let { (id, createdAt) ->
-            replaceAuthors(bookId = id, authors = entity.authors)
-            book.copy(id = BookId(id), createdAt = createdAt)
+        if (inserted.isPresent) {
+            replaceAuthors(bookId = entity.id, authors = entity.authors)
+            book
+        } else {
+            // Already stored: the row as it is — or nothing, if a review has not approved it
+            bookQueries.findCatalogBySource(source = entity.source, sourceId = entity.sourceId!!)?.toDomain()
         }
     }
 

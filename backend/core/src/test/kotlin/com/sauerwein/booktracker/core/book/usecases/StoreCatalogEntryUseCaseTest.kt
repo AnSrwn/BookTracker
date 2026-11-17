@@ -12,15 +12,15 @@ import java.time.ZoneOffset
 import kotlin.test.*
 
 /** The licence rule. The database allowlist backstops it; this is where it is decided. */
-class UpsertCatalogEntryUseCaseTest {
+class StoreCatalogEntryUseCaseTest {
 
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-11-03T10:00:00Z"), ZoneOffset.UTC)
-    private val upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(bookRepository = bookRepository, clock = clock)
+    private val storeCatalogEntryUseCase = StoreCatalogEntryUseCase(bookRepository = bookRepository, clock = clock)
 
     @Test
     fun `stores a candidate from a persistable source as a public row`() {
-        val book = upsertCatalogEntryUseCase(testCandidate(source = SourceId.of("open_library")))
+        val book = storeCatalogEntryUseCase(testCandidate(source = SourceId.of("open_library")))
 
         assertNotNull(book)
         assertNull(book.ownerId)
@@ -29,9 +29,26 @@ class UpsertCatalogEntryUseCaseTest {
         assertEquals(listOf(book), bookRepository.stored())
     }
 
+    /**
+     * 9.9 Q16: a stored row is never refreshed by a lookup. A merge that one provider's outage left
+     * short — or one from another ISBN of the same record — must not erase what the row has.
+     */
+    @Test
+    fun `a stored record is returned as stored, never refreshed`() {
+        val first = Isbn.of("9780375826689")
+        val stored = storeCatalogEntryUseCase(testCandidate(title = "Eragon", isbn = first).copy(pageCount = 509))
+
+        val again = storeCatalogEntryUseCase(testCandidate(title = "Eragon (short)", isbn = Isbn.of("9780375840548")))
+
+        assertEquals(stored, again)
+        assertEquals(first, again?.isbn)
+        assertEquals(509, again?.pageCount)
+        assertEquals(listOf(stored), bookRepository.stored())
+    }
+
     @Test
     fun `never stores a candidate from a non-persistable source`() {
-        val book = upsertCatalogEntryUseCase(
+        val book = storeCatalogEntryUseCase(
             testCandidate(
                 source = SourceId.of("google_books"),
                 persistableInPublicCatalog = false
@@ -45,17 +62,17 @@ class UpsertCatalogEntryUseCaseTest {
     /** Without a stable `(source, sourceId)` the row could never be deduped or refreshed. */
     @Test
     fun `never stores a candidate without a source record id`() {
-        assertNull(upsertCatalogEntryUseCase(testCandidate(sourceId = null)))
+        assertNull(storeCatalogEntryUseCase(testCandidate(sourceId = null)))
         assertTrue(bookRepository.stored().isEmpty())
     }
 
     @Test
-    fun `upserting the same record twice keeps one row and its id`() {
-        val first = upsertCatalogEntryUseCase(testCandidate(title = "Dune"))
-        val second = upsertCatalogEntryUseCase(testCandidate(title = "Dune (revised)"))
+    fun `storing the same record twice keeps one row and its id`() {
+        val first = storeCatalogEntryUseCase(testCandidate(title = "Dune"))
+        val second = storeCatalogEntryUseCase(testCandidate(title = "Dune (revised)"))
 
         assertEquals(first?.id, second?.id)
-        assertEquals(listOf("Dune (revised)"), bookRepository.stored().map { it.title })
+        assertEquals(listOf("Dune"), bookRepository.stored().map { it.title })
     }
 
     /** Another record already holds the ISBN: the caller gets that row, id and data together. */
@@ -63,9 +80,9 @@ class UpsertCatalogEntryUseCaseTest {
     fun `returns the existing catalog row when another record holds the ISBN`() {
         val isbn = Isbn.of("9780375826689")
         val existing =
-            upsertCatalogEntryUseCase(testCandidate(title = "Eragon", isbn = isbn, sourceId = SourceRecordId("OL1M")))
+            storeCatalogEntryUseCase(testCandidate(title = "Eragon", isbn = isbn, sourceId = SourceRecordId("OL1M")))
 
-        val result = upsertCatalogEntryUseCase(
+        val result = storeCatalogEntryUseCase(
             testCandidate(
                 title = "Eragon, other record",
                 isbn = isbn,
@@ -83,7 +100,7 @@ class UpsertCatalogEntryUseCaseTest {
         val pending = testBook(ownerId = null, title = "Dune (under review)", source = SourceId.of("test_source"), sourceId = SourceRecordId("test-record-1"))
         bookRepository.seedUnapproved(pending)
 
-        assertNull(upsertCatalogEntryUseCase(testCandidate(title = "Dune")))
+        assertNull(storeCatalogEntryUseCase(testCandidate(title = "Dune")))
         assertEquals(listOf(pending), bookRepository.stored())
     }
 }

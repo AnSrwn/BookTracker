@@ -30,10 +30,10 @@ class SearchCatalogUseCaseTest {
     private val otherUser = UserId(UUID.randomUUID())
     private val bookRepository = InMemoryBookRepository()
 
-    private val upsertCatalogEntry = UpsertCatalogEntryUseCase(bookRepository, Clock.systemUTC())
+    private val storeCatalogEntry = StoreCatalogEntryUseCase(bookRepository, Clock.systemUTC())
 
     private fun useCase(source: FakeBookMetadataSource) = SearchCatalogUseCase(
-        resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsertCatalogEntry),
+        resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, storeCatalogEntry),
         bookRepository = bookRepository,
         bookMetadataSource = source,
         currentUserProvider = { user },

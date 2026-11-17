@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.adapter.bookdata.dnb
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.book.models.SourceRef
@@ -53,6 +54,27 @@ class DnbMapperTest {
         assertNull(candidate.coverUrl)
         assertNull(candidate.workKey)
         assertTrue(candidate.persistableInPublicCatalog)
+    }
+
+    /** 9.9 Q3: `041$a` first, normalised from the MARC code. */
+    @Test
+    fun `reads the language from 041`() {
+        assertEquals(Language.of("de"), eragon.mapped()?.language)
+        assertEquals(Language.of("en"), eragon.with("041", field("041", 'a' to "eng", 'h' to "ger")).mapped()?.language)
+    }
+
+    @Test
+    fun `falls back to the language in 008 without 041`() {
+        val english = eragon.with("041").copy(controlFields = eragon.controlFields + ("008" to listOf("140813s2014    xxk||||| |||| 00||||eng  ")))
+
+        assertEquals(Language.of("en"), english.mapped()?.language)
+    }
+
+    @Test
+    fun `has no language when neither 041 nor 008 name a readable one`() {
+        val unknown = eragon.with("041").copy(controlFields = eragon.controlFields + ("008" to listOf("140813s2014    gw ||||| |||| 00||||und  ")))
+
+        assertNull(unknown.mapped()?.language)
     }
 
     @Test

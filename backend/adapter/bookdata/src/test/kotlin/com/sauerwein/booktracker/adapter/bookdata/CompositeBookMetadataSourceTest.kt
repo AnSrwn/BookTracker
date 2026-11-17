@@ -5,11 +5,16 @@ import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedExcepti
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
+import com.sauerwein.booktracker.core.book.models.CatalogBookRef
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
+import com.sauerwein.booktracker.core.book.models.addRef
 import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.book.models.SourceRef
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -17,6 +22,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private val ISBN = Isbn.of("9783570402931")
+private val OTHER_ISBN = Isbn.of("9780735619678")
 private val FINDER = SourceId.of("finder")
 private val LIBRARY = SourceId.of("library")
 private val ARCHIVE = SourceId.of("archive")
@@ -31,15 +37,17 @@ class CompositeBookMetadataSourceTest {
         private val hits: List<BookCandidate> = emptyList(),
         private val isbnHit: BookCandidate? = null,
         private val failure: RuntimeException? = null,
+        persistable: Boolean = true,
     ) : BookMetadataSource {
-        val calls = mutableListOf<String>()
+        /** Written on the provider's own thread, read after the composite returned. */
+        val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
         override val descriptor = SourceDescriptor(
             id = id,
             supportsIsbnLookup = isbn,
             supportsFreeTextSearch = search,
             providesCovers = false,
-            persistableInPublicCatalog = true,
+            persistableInPublicCatalog = persistable,
         )
 
         override fun search(text: String): List<BookCandidate> {
@@ -60,29 +68,41 @@ class CompositeBookMetadataSourceTest {
         }
     }
 
-    private fun hit(source: SourceId, title: String) = BookCandidate(
+    private fun hit(
+        source: SourceId,
+        title: String,
+        isbn: Isbn? = null,
+        publisher: String? = null,
+        coverUrl: String? = null,
+        persistable: Boolean = true,
+        language: Language? = null,
+    ) = BookCandidate(
         title = title,
         authors = listOf(Author("Christopher Paolini", ref = null)),
-        publisher = null,
-        isbn = null,
+        publisher = publisher,
+        isbn = isbn,
         publicationYear = null,
         pageCount = null,
-        coverUrl = null,
+        coverUrl = coverUrl,
+        language = language,
         source = source,
         sourceId = SourceRecordId(title),
         workKey = null,
-        persistableInPublicCatalog = true,
+        persistableInPublicCatalog = persistable,
     )
 
     private fun down(id: SourceId) = SourceUnavailableException(id)
     private fun quotaSpent(id: SourceId) = SourceQuotaExhaustedException(id)
 
+
+    /** Fields in the order the test lists the providers, the same for every language. */
+    private fun precedence(order: List<SourceId>) = MergePrecedence(default = FieldPrecedence(fields = order))
+
     private fun composite(
-        vararg providers: FakeProvider,
+        vararg providers: BookMetadataSource,
         searchOrder: List<SourceId> = emptyList(),
-        isbnOrder: List<SourceId> = emptyList(),
-        isbnOrderByGroup: Map<IsbnGroup, List<SourceId>> = emptyMap(),
-    ) = CompositeBookMetadataSource(providers.toList(), searchOrder, IsbnOrder(isbnOrder, isbnOrderByGroup))
+        precedence: MergePrecedence = precedence(listOf(LIBRARY, ARCHIVE, FINDER)),
+    ) = CompositeBookMetadataSource(providers.toList(), searchOrder, BookCandidateMerge(precedence))
 
     // Order and capabilities
 
@@ -135,6 +155,158 @@ class CompositeBookMetadataSourceTest {
     @Test
     fun `refuses two providers with the same id`() {
         assertFailsWith<IllegalArgumentException> { composite(FakeProvider(FINDER), FakeProvider(FINDER)) }
+    }
+
+    // Parallel fan-out (9.9)
+
+    /**
+     * A6: the first provider only answers once the second one has been asked. Asked one after
+     * another, the first would wait for nothing and give up — so this passes only in parallel.
+     */
+    private fun pairWaitingOnEachOther(): Pair<BookMetadataSource, BookMetadataSource> {
+        val secondAsked = CountDownLatch(1)
+        val first = object : BookMetadataSource by FakeProvider(LIBRARY) {
+            private fun waitForSecond(): Boolean = secondAsked.await(5, TimeUnit.SECONDS)
+            override fun search(text: String) =
+                if (waitForSecond()) listOf(hit(LIBRARY, "first")) else error("asked one after another")
+            override fun findByIsbn(isbn: Isbn) =
+                if (waitForSecond()) hit(LIBRARY, "first", isbn = isbn) else error("asked one after another")
+        }
+        val second = object : BookMetadataSource by FakeProvider(ARCHIVE) {
+            override fun search(text: String): List<BookCandidate> {
+                secondAsked.countDown()
+                return listOf(hit(ARCHIVE, "second"))
+            }
+            override fun findByIsbn(isbn: Isbn): BookCandidate? {
+                secondAsked.countDown()
+                return hit(ARCHIVE, "second", isbn = isbn)
+            }
+        }
+        return first to second
+    }
+
+    @Test
+    fun `asks the search providers in parallel`() {
+        val (first, second) = pairWaitingOnEachOther()
+
+        val titles = composite(first, second, searchOrder = listOf(LIBRARY, ARCHIVE)).search("eragon").map { it.title }
+
+        assertEquals(listOf("first", "second"), titles)
+    }
+
+    @Test
+    fun `asks the ISBN providers in parallel`() {
+        val (first, second) = pairWaitingOnEachOther()
+
+        assertEquals("first", composite(first, second).findByIsbn(ISBN)?.title)
+    }
+
+    // Merge (9.9)
+
+    /** A4: one edition from two providers is one hit, with what each of them knows. */
+    @Test
+    fun `merges search hits with the same ISBN into one, at the position of the first`() {
+        val finder = FakeProvider(
+            FINDER,
+            hits = listOf(hit(FINDER, "Eragon (finder)", isbn = ISBN, coverUrl = "https://finder/c.jpg"), hit(FINDER, "Eldest", isbn = OTHER_ISBN)),
+        )
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon", isbn = ISBN, publisher = "cbj")))
+
+        val hits = composite(finder, library, searchOrder = listOf(FINDER, LIBRARY)).search("eragon")
+
+        assertEquals(listOf("Eragon", "Eldest"), hits.map { it.title })
+        val eragon = hits.first()
+        assertEquals(LIBRARY, eragon.source)
+        assertEquals("cbj", eragon.publisher)
+        assertEquals("https://finder/c.jpg", eragon.coverUrl)
+    }
+
+    /** Q5: without an ISBN, two hits are never assumed to be one edition. */
+    @Test
+    fun `never merges search hits without an ISBN`() {
+        val finder = FakeProvider(FINDER, hits = listOf(hit(FINDER, "Tschick")))
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Tschick")))
+
+        assertEquals(2, composite(finder, library).search("tschick").size)
+    }
+
+    /** I12: a hit merged with data that may not be stored cannot be stored either. */
+    @Test
+    fun `a hit merged with data that may not be stored is not storable`() {
+        val finder = FakeProvider(FINDER, hits = listOf(hit(FINDER, "Eragon", isbn = ISBN, coverUrl = "https://finder/c.jpg", persistable = false)))
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon", isbn = ISBN)))
+
+        val merged = composite(finder, library).search("eragon").single()
+
+        assertEquals(false, merged.persistableInPublicCatalog)
+        // I15: so it is added by its ISBN alone, with no record of its own to fall back to
+        assertEquals(CatalogBookRef.ByIsbn(ISBN), merged.addRef)
+    }
+
+    /** Two hits of one provider with one ISBN are one edition too (two Google volumes of a printing). */
+    @Test
+    fun `merges two hits of the same provider with the same ISBN`() {
+        val finder = FakeProvider(
+            FINDER,
+            hits = listOf(hit(FINDER, "Eragon (scan)", isbn = ISBN), hit(FINDER, "Eragon (publisher)", isbn = ISBN, publisher = "cbj")),
+        )
+
+        val merged = composite(finder).search("eragon").single()
+
+        assertEquals("Eragon (scan)", merged.title)
+        assertEquals("cbj", merged.publisher)
+    }
+
+    /** The merged hit's language picks the field order (9.9 Q3), also through the composite. */
+    @Test
+    fun `the merged record's language picks the field order`() {
+        val german = Language.of("de")
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Der kleine Hobbit (library)", isbn = ISBN))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Der kleine Hobbit (archive)", isbn = ISBN, language = german))
+        val precedence = MergePrecedence(
+            default = FieldPrecedence(fields = listOf(LIBRARY, ARCHIVE)),
+            byLanguage = mapOf(german to FieldPrecedence(fields = listOf(ARCHIVE, LIBRARY))),
+        )
+
+        val found = composite(library, archive, precedence = precedence).findByIsbn(ISBN)
+
+        assertEquals("Der kleine Hobbit (archive)", found?.title)
+        assertEquals(german, found?.language)
+    }
+
+    /** Q1, A1: a scan asks everyone and stores what all of them know about the edition. */
+    @Test
+    fun `merges what every ISBN provider knows, even after the first one found it`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon", isbn = ISBN, publisher = "cbj"))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)", isbn = ISBN, coverUrl = "https://archive/c.jpg"))
+
+        val found = composite(library, archive).findByIsbn(ISBN)
+
+        assertEquals("Eragon", found?.title)
+        assertEquals(LIBRARY, found?.source)
+        assertEquals("cbj", found?.publisher)
+        assertEquals("https://archive/c.jpg", found?.coverUrl)
+        assertEquals(listOf("isbn"), archive.calls)
+    }
+
+    /** A2: the configured precedence, not the provider list, decides whose title and identity win. */
+    @Test
+    fun `the precedence decides whose record names the merged one`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon (library)", isbn = ISBN))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)", isbn = ISBN))
+
+        val found = composite(library, archive, precedence = precedence(listOf(ARCHIVE, LIBRARY))).findByIsbn(ISBN)
+
+        assertEquals("Eragon (archive)", found?.title)
+        assertEquals(ARCHIVE, found?.source)
+    }
+
+    /** The scanned ISBN is the row's ISBN, whichever form a provider reports. */
+    @Test
+    fun `the merged record carries the ISBN that was asked`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon", isbn = OTHER_ISBN))
+
+        assertEquals(ISBN, composite(library).findByIsbn(ISBN)?.isbn)
     }
 
     // Search outages (9.7 D4)
@@ -215,89 +387,26 @@ class CompositeBookMetadataSourceTest {
         assertEquals(1, e.suppressed.size)
     }
 
-    // Interrupts (code review): a provider asked on an interrupted thread fails at once, and its
-    // circuit breaker would count a healthy source as failing
-
-    /** The first provider is interrupted during its retry pause, as GoogleBooksClient does. */
-    private fun interruptedProvider(id: SourceId) = object : BookMetadataSource by FakeProvider(id) {
-        override fun search(text: String): List<BookCandidate> {
-            Thread.currentThread().interrupt()
-            throw down(id)
-        }
-
-        override fun findByIsbn(isbn: Isbn): BookCandidate? {
-            Thread.currentThread().interrupt()
-            throw down(id)
-        }
-    }
-
-    private fun <T> onInterruptibleThread(block: () -> T): T =
-        try {
-            block()
-        } finally {
-            Thread.interrupted()
-        }
-
-    @Test
-    fun `asks no further provider once the request is interrupted`() {
-        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
-        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(FINDER), library), listOf(FINDER, LIBRARY), IsbnOrder(emptyList()))
-
-        onInterruptibleThread {
-            val e = assertFailsWith<SourceUnavailableException> { composite.search("eragon") }
-
-            assertEquals(FINDER, e.source)
-            assertTrue(Thread.currentThread().isInterrupted)
-        }
-        assertTrue(library.calls.isEmpty())
-    }
-
-    @Test
-    fun `keeps the hits found before the interrupt`() {
-        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
-        val composite = CompositeBookMetadataSource(listOf(library, interruptedProvider(FINDER), FakeProvider(ARCHIVE)), listOf(LIBRARY, FINDER, ARCHIVE), IsbnOrder(emptyList()))
-
-        val titles = onInterruptibleThread { composite.search("eragon").map { it.title } }
-
-        assertEquals(listOf("Eragon"), titles)
-    }
-
-    @Test
-    fun `asks no further ISBN provider once the request is interrupted`() {
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon"))
-        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(LIBRARY), archive), emptyList(), IsbnOrder(listOf(LIBRARY, ARCHIVE)))
-
-        onInterruptibleThread { assertFailsWith<SourceUnavailableException> { composite.findByIsbn(ISBN) } }
-        assertTrue(archive.calls.isEmpty())
-    }
-
     /** A bug in a provider is not an outage and stays a 500. */
     @Test
     fun `does not swallow an unexpected exception`() {
         assertFailsWith<IllegalStateException> {
             composite(FakeProvider(FINDER, failure = IllegalStateException("bug")), FakeProvider(LIBRARY)).search("x")
         }
+        assertFailsWith<IllegalStateException> {
+            composite(FakeProvider(LIBRARY, failure = IllegalStateException("bug")), FakeProvider(ARCHIVE)).findByIsbn(ISBN)
+        }
     }
 
-    // ISBN lookup (9.7 D5)
+    // ISBN lookup outages (9.7 D5)
 
+    /** A3: a provider that fails only shortens the record; the others still answer. */
     @Test
-    fun `takes the first provider that knows the ISBN and asks no further`() {
-        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon"))
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)"))
-
-        val found = composite(archive, library, isbnOrder = listOf(LIBRARY, ARCHIVE)).findByIsbn(ISBN)
-
-        assertEquals("Eragon", found?.title)
-        assertTrue(archive.calls.isEmpty())
-    }
-
-    @Test
-    fun `finds the ISBN at the next provider when the first one fails`() {
+    fun `finds the ISBN at another provider when one fails`() {
         val library = FakeProvider(LIBRARY, failure = down(LIBRARY))
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon"))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon", isbn = ISBN))
 
-        assertEquals("Eragon", composite(library, archive, isbnOrder = listOf(LIBRARY, ARCHIVE)).findByIsbn(ISBN)?.title)
+        assertEquals("Eragon", composite(library, archive).findByIsbn(ISBN)?.title)
     }
 
     /** D5: a scan must not send the user to the manual form for a book a failing source might know. */
@@ -329,66 +438,99 @@ class CompositeBookMetadataSourceTest {
         assertNull(composite(FakeProvider(LIBRARY), FakeProvider(ARCHIVE)).findByIsbn(ISBN))
     }
 
-    // ISBN order by group (9.8 Q1, Q5)
-
-    private val germanLanguageIsbn = ISBN // 978-3…
-    private val englishIsbn = Isbn.of("9780735619678")
-
-    private fun keyed(vararg providers: FakeProvider) = composite(
-        *providers,
-        isbnOrder = listOf(LIBRARY, ARCHIVE),
-        isbnOrderByGroup = mapOf(IsbnGroup.GERMAN_LANGUAGE to listOf(ARCHIVE, LIBRARY)),
-    )
-
-    /** E12: the group's own order — the second provider is not asked once the first knows the ISBN. */
     @Test
-    fun `asks in the group's order for an ISBN of that group`() {
-        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon (library)"))
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)"))
+    fun `asks every ISBN provider, whatever their order`() {
+        val composite = composite(FakeProvider(LIBRARY), FakeProvider(ARCHIVE), FakeProvider(FINDER, isbn = false))
 
-        assertEquals("Eragon (archive)", keyed(library, archive).findByIsbn(germanLanguageIsbn)?.title)
+        assertEquals(listOf(ARCHIVE, LIBRARY), composite.isbnProviders.map { it.descriptor.id })
+    }
+
+    // Interrupts (code review): once the request is interrupted, the composite stops waiting
+
+    private fun <T> onInterruptibleThread(block: () -> T): T =
+        try {
+            block()
+        } finally {
+            Thread.interrupted()
+        }
+
+    @Test
+    fun `asks no provider once the request is interrupted`() {
+        val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")), isbnHit = hit(LIBRARY, "Eragon"))
+        val composite = composite(library)
+
+        onInterruptibleThread {
+            Thread.currentThread().interrupt()
+            val e = assertFailsWith<SourceUnavailableException> { composite.search("eragon") }
+            assertEquals(LIBRARY, e.source)
+            assertFailsWith<SourceUnavailableException> { composite.findByIsbn(ISBN) }
+            assertTrue(Thread.currentThread().isInterrupted)
+        }
         assertTrue(library.calls.isEmpty())
     }
 
-    /** E11, E15: an ISBN in no group uses the default order. */
-    @Test
-    fun `asks in the default order for an ISBN in no group`() {
-        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Code Complete (library)"))
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Code Complete (archive)"))
+    /**
+     * A fast provider that has answered and a slow one that interrupts the request thread once the
+     * request is parked waiting for it — so the fast answer is in, and the interrupt is what ends
+     * the wait. [release] lets the slow provider finish afterwards.
+     */
+    private inner class InterruptWhileWaiting(private val requestThread: Thread) {
+        val release = CountDownLatch(1)
+        private val fastDone = CountDownLatch(1)
 
-        assertEquals("Code Complete (library)", keyed(library, archive).findByIsbn(englishIsbn)?.title)
-        assertTrue(archive.calls.isEmpty())
+        val fast = object : BookMetadataSource by FakeProvider(LIBRARY) {
+            override fun search(text: String) = listOf(hit(LIBRARY, "Eragon")).also { fastDone.countDown() }
+            override fun findByIsbn(isbn: Isbn) = hit(LIBRARY, "Eragon", isbn = isbn).also { fastDone.countDown() }
+        }
+
+        val slow = object : BookMetadataSource by FakeProvider(ARCHIVE) {
+            override fun search(text: String): List<BookCandidate> = interruptThenWait().let { listOf(hit(ARCHIVE, "too late")) }
+            override fun findByIsbn(isbn: Isbn): BookCandidate = interruptThenWait().let { hit(ARCHIVE, "too late", isbn = isbn) }
+        }
+
+        private fun interruptThenWait() {
+            fastDone.await(5, TimeUnit.SECONDS)
+            // Parked in `get()`: either already on the slow answer, or about to take the fast one, which is complete
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (requestThread.state != Thread.State.WAITING && System.nanoTime() < deadline) Thread.onSpinWait()
+            Thread.sleep(50)
+            requestThread.interrupt()
+            release.await(5, TimeUnit.SECONDS)
+        }
     }
 
-    /** E14: the provider listed last is the fallback, asked only after the first one missed. */
+    /**
+     * Interrupted while waiting for a slow provider: what the fast one found is still the answer,
+     * the slow one counts as failed, and it is left running rather than interrupted.
+     */
     @Test
-    fun `asks the provider listed last when the first one misses`() {
-        val library = FakeProvider(LIBRARY)
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Cik"))
+    fun `keeps the search hits found before the interrupt and stops waiting for the rest`() {
+        val setup = InterruptWhileWaiting(Thread.currentThread())
 
-        assertEquals("Cik", keyed(library, archive).findByIsbn(englishIsbn)?.title)
-        assertEquals(listOf("isbn"), library.calls)
+        try {
+            val titles = onInterruptibleThread {
+                composite(setup.fast, setup.slow, searchOrder = listOf(LIBRARY, ARCHIVE)).search("eragon").map { it.title }
+            }
+            assertEquals(listOf("Eragon"), titles)
+        } finally {
+            setup.release.countDown()
+        }
     }
 
+    /** Review F4: a partial ISBN merge would be stored for good — an interrupted lookup is an outage instead. */
     @Test
-    fun `uses the default order for a group without its own`() {
-        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon (library)"))
-        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)"))
+    fun `an interrupted ISBN lookup is an outage, not the partial merge`() {
+        val setup = InterruptWhileWaiting(Thread.currentThread())
 
-        val found = composite(library, archive, isbnOrder = listOf(LIBRARY, ARCHIVE)).findByIsbn(germanLanguageIsbn)
-
-        assertEquals("Eragon (library)", found?.title)
-    }
-
-    @Test
-    fun `the order differs per group, the providers do not`() {
-        val composite = keyed(FakeProvider(LIBRARY), FakeProvider(ARCHIVE), FakeProvider(FINDER, isbn = false))
-
-        assertEquals(listOf(LIBRARY, ARCHIVE), composite.isbnProviders.map { it.descriptor.id })
-        assertEquals(
-            listOf(ARCHIVE, LIBRARY),
-            composite.isbnProvidersByGroup.getValue(IsbnGroup.GERMAN_LANGUAGE).map { it.descriptor.id },
-        )
+        try {
+            onInterruptibleThread {
+                val e = assertFailsWith<SourceUnavailableException> { composite(setup.fast, setup.slow).findByIsbn(ISBN) }
+                assertEquals(ARCHIVE, e.source)
+                assertTrue(Thread.currentThread().isInterrupted)
+            }
+        } finally {
+            setup.release.countDown()
+        }
     }
 
     // Configuration
@@ -428,9 +570,8 @@ class CompositeBookMetadataSourceTest {
         val failing = object : BookMetadataSource by FakeProvider(LIBRARY) {
             override fun findByRecordId(ref: SourceRef): BookCandidate? = throw down(LIBRARY)
         }
-        val composite = CompositeBookMetadataSource(listOf(failing), emptyList(), IsbnOrder(emptyList()))
 
-        val e = assertFailsWith<SourceUnavailableException> { composite.findByRecordId(SourceRef(LIBRARY, SourceRecordId("x"))) }
+        val e = assertFailsWith<SourceUnavailableException> { composite(failing).findByRecordId(SourceRef(LIBRARY, SourceRecordId("x"))) }
         assertEquals(LIBRARY, e.source)
     }
 }

@@ -5,6 +5,7 @@ import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.user.CurrentUserProvider
 import java.time.Clock
@@ -20,6 +21,7 @@ data class CreatePrivateBookCommand(
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
+    val language: Language? = null,
 )
 
 /**
@@ -46,6 +48,7 @@ class CreatePrivateBookUseCase(
             publicationYear = command.publicationYear,
             pageCount = command.pageCount,
             coverUrl = command.coverUrl,
+            language = command.language,
             source = SourceId.MANUAL,
             sourceId = null,
             sourceFetchedAt = null,

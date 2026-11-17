@@ -4,12 +4,13 @@ package com.sauerwein.booktracker.core.book.models
 sealed interface CatalogBookRef {
     data class Stored(val id: BookId) : CatalogBookRef
 
-    /** A search hit, as carried by its signed hit id (D28). Stored from the full record on add (D29). */
-    data class SourceRecord(val source: SourceId, val recordId: SourceRecordId) : CatalogBookRef
-
     /**
-     * A hit whose own data may not be stored (9.7 D1, D6): only its ISBN is kept. Adding it
-     * resolves the ISBN like a scan, so what enters the catalog is a CC0 record, never the hit.
+     * A search hit not stored yet, as carried by its signed hit id (D28). Adding resolves the ISBN
+     * like a scan (9.9 Q10), so what enters the catalog is the merged CC0 record, never the hit —
+     * for a hit whose data may not be stored (9.7 D1, D6) and for every other one alike.
+     *
+     * [record] is the hit's own source record, set only for a hit that may enter the catalog by
+     * itself: if the ISBN resolves to nothing, that full record is stored instead (D29).
      */
-    data class ByIsbn(val isbn: Isbn) : CatalogBookRef
+    data class ByIsbn(val isbn: Isbn, val record: SourceRef? = null) : CatalogBookRef
 }

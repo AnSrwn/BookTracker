@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.core.book.usecases
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.models.BookKind
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.kind
 import com.sauerwein.booktracker.core.user.UserId
@@ -28,6 +29,7 @@ class CreatePrivateBookUseCaseTest {
         publicationYear = 1965,
         pageCount = 896,
         coverUrl = "https://example.com/dune.jpg",
+        language = Language.of("en"),
     )
 
     @Test
@@ -71,6 +73,12 @@ class CreatePrivateBookUseCaseTest {
         assertEquals(1965, book.publicationYear)
         assertEquals(896, book.pageCount)
         assertEquals("https://example.com/dune.jpg", book.coverUrl)
+        assertEquals(Language.of("en"), book.language)
+    }
+
+    @Test
+    fun `a private book without a language has none`() {
+        assertNull(createPrivateBook(command.copy(language = null)).language)
     }
 
     @Test

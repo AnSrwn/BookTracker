@@ -14,6 +14,9 @@ private const val ELECTRONIC_RESOURCE = 'c'
 private const val ONLINE_CARRIER = "cr"
 private const val ONLINE_RESOURCE_EXTENT = "Online-Ressource"
 
+/** `008` positions 35–37: the language of the item, a MARC (ISO 639-2/B) code. */
+private val FIXED_FIELD_LANGUAGE = 35..37
+
 /** `$4` relator code for an author. Others: `trl` translator, `nrt` narrator, `ctb` contributor… */
 private const val AUTHOR_ROLE = "aut"
 
@@ -82,6 +85,7 @@ class DnbMapper(private val descriptor: SourceDescriptor) {
                 .firstNotNullOfOrNull { PAGES.find(it)?.groupValues?.get(1)?.toIntOrNull() }
                 ?.takeIf { it > 0 },
             coverUrl = null,
+            language = language(record),
             source = descriptor.id,
             sourceId = sourceId,
             workKey = null,
@@ -101,6 +105,15 @@ class DnbMapper(private val descriptor: SourceDescriptor) {
         if (record.fields("338").any { field -> field.values('b').any { it.trim() == ONLINE_CARRIER } }) return false
         return record.fields("300").none { field -> field.values('a').any { ONLINE_RESOURCE_EXTENT in it } }
     }
+
+    /**
+     * `041$a`, the language code field, else `008/35-37`. With several (a bilingual edition, a
+     * translation listing its original in `$h`), the first `$a` — the text's own language — counts.
+     */
+    private fun language(record: MarcRecord): Language? =
+        record.fields("041").flatMap { it.values('a') }.firstNotNullOfOrNull { Language.ofOrNull(text(it)) }
+            ?: record.control("008")?.takeIf { it.length > FIXED_FIELD_LANGUAGE.last }
+                ?.substring(FIXED_FIELD_LANGUAGE)?.let(Language::ofOrNull)
 
     /**
      * `$a $n – $p` (Q2), walked in subfield order so each part number stays with its part:

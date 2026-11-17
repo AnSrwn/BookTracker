@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.core.book.usecases
 
+import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.FakeBookMetadataSource
 import com.sauerwein.booktracker.core.book.InMemoryBookRepository
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
@@ -8,6 +9,7 @@ import com.sauerwein.booktracker.core.book.models.CatalogBookRef
 import com.sauerwein.booktracker.core.book.models.Isbn
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
+import com.sauerwein.booktracker.core.book.models.SourceRef
 import com.sauerwein.booktracker.core.book.testBook
 import com.sauerwein.booktracker.core.book.testCandidate
 import com.sauerwein.booktracker.core.shared.exception.ConflictException
@@ -35,19 +37,20 @@ class AddCatalogBookUseCaseTest {
     private val bookRepository = InMemoryBookRepository()
     private val clock = Clock.fixed(Instant.parse("2026-11-16T10:00:00Z"), ZoneOffset.UTC)
 
-    private fun useCase(source: FakeBookMetadataSource = FakeBookMetadataSource()): AddCatalogBookUseCase {
-        val upsert = UpsertCatalogEntryUseCase(bookRepository, clock)
+    private fun useCase(source: BookMetadataSource = FakeBookMetadataSource()): AddCatalogBookUseCase {
+        val store = StoreCatalogEntryUseCase(bookRepository, clock)
         return AddCatalogBookUseCase(
             bookRepository = bookRepository,
             bookMetadataSource = source,
-            upsertCatalogEntryUseCase = upsert,
-            resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, upsert),
+            storeCatalogEntryUseCase = store,
+            resolveIsbnUseCase = ResolveIsbnUseCase(bookRepository, source, store),
             currentUserProvider = { userA },
             clock = clock,
         )
     }
 
-    private val hit = CatalogBookRef.SourceRecord(TEST_SOURCE, RECORD)
+    /** A hit that may enter the catalog by itself: its ISBN, and its own record as the fallback. */
+    private val hit = CatalogBookRef.ByIsbn(ISBN, record = SourceRef(TEST_SOURCE, RECORD))
 
     // A stored catalog book, added by its UUID
 
@@ -109,16 +112,34 @@ class AddCatalogBookUseCaseTest {
         assertFailsWith<NotFoundException> { useCase()(CatalogBookRef.Stored(BookId(UUID.randomUUID()))) }
     }
 
-    // A search hit not stored yet, added by its signed hit id (D27–D29)
+    // A search hit not stored yet, added by its signed hit id (D27–D29, 9.9 Q10)
 
-    /** D29: the catalog row comes from the full record, never from the thin search hit. */
+    /** 9.9 Q10: a hit is resolved like a scan of its ISBN, so the row is the same however it was added. */
     @Test
-    fun `fetches the full record of a search hit, stores it in the catalog and links it`() {
-        val full = testCandidate(title = "Eragon", isbn = ISBN).copy(publisher = "Knopf", pageCount = 503)
-        val source = FakeBookMetadataSource(recordResult = full)
+    fun `resolves a search hit by its ISBN first and stores what a scan would store`() {
+        val merged = testCandidate(title = "Eragon", isbn = ISBN, source = SourceId.of("dnb"), sourceId = SourceRecordId("1055026991"))
+        val source = FakeBookMetadataSource(
+            isbnResult = merged,
+            recordResult = testCandidate(title = "Eragon (thin)", isbn = ISBN),
+        )
 
         val added = useCase(source)(hit)
 
+        assertEquals(listOf(ISBN), source.lookedUpIsbns)
+        assertTrue(source.lookedUpRecordIds.isEmpty())
+        assertEquals(SourceId.of("dnb"), added.source)
+        assertEquals("Eragon", bookRepository.stored().single().title)
+    }
+
+    /** D29: when the ISBN resolves to nothing, the row comes from the hit's full record, never from the thin hit. */
+    @Test
+    fun `falls back to the full record of a search hit when its ISBN resolves to nothing`() {
+        val full = testCandidate(title = "Eragon", isbn = ISBN).copy(publisher = "Knopf", pageCount = 503)
+        val source = FakeBookMetadataSource(isbnResult = null, recordResult = full)
+
+        val added = useCase(source)(hit)
+
+        assertEquals(listOf(ISBN), source.lookedUpIsbns)
         assertEquals(listOf(RECORD), source.lookedUpRecordIds)
         val stored = bookRepository.stored().single()
         assertNull(stored.ownerId)
@@ -201,7 +222,7 @@ class AddCatalogBookUseCaseTest {
     fun `a hit naming another source is not found`() {
         val source = FakeBookMetadataSource(recordResult = testCandidate(isbn = ISBN))
 
-        assertFailsWith<NotFoundException> { useCase(source)(CatalogBookRef.SourceRecord(SourceId.of("other"), RECORD)) }
+        assertFailsWith<NotFoundException> { useCase(source)(CatalogBookRef.ByIsbn(ISBN, SourceRef(SourceId.of("other"), RECORD))) }
         assertTrue(source.lookedUpRecordIds.isEmpty())
         assertTrue(bookRepository.stored().isEmpty())
     }
@@ -216,6 +237,65 @@ class AddCatalogBookUseCaseTest {
         assertTrue(bookRepository.links().isEmpty())
     }
 
+    /**
+     * 9.9 Q13: one provider down while resolving the ISBN — the hit's own record is still worth a
+     * try. It comes from the source the hit came from; a scan during the outage would store no more.
+     */
+    @Test
+    fun `an outage while resolving the hit's ISBN falls back to the hit's own record`() {
+        val full = testCandidate(title = "Eragon", isbn = ISBN).copy(publisher = "Knopf", pageCount = 503)
+        val source = FakeBookMetadataSource(isbnFailure = SourceUnavailableException(SourceId.of("dnb")), recordResult = full)
+
+        val added = useCase(source)(hit)
+
+        assertEquals(listOf(RECORD), source.lookedUpRecordIds)
+        assertEquals(503, added.pageCount)
+        assertEquals(listOf(userA to added.id), bookRepository.links())
+    }
+
+    /** The outage stands when the record yields nothing either: the book may exist, so not "not found". */
+    @Test
+    fun `an outage while resolving the hit's ISBN stands when its record yields nothing`() {
+        val outage = SourceUnavailableException(SourceId.of("dnb"))
+        val source = FakeBookMetadataSource(isbnFailure = outage, recordResult = null)
+
+        val e = assertFailsWith<SourceUnavailableException> { useCase(source)(hit) }
+        assertEquals(outage, e)
+        assertTrue(bookRepository.stored().isEmpty())
+    }
+
+    /** Review N17: the hit's own source just failed; asking it again would only wait a second time. */
+    @Test
+    fun `no fallback when the hit's own source is the one that failed`() {
+        val outage = SourceUnavailableException(TEST_SOURCE)
+        val source = FakeBookMetadataSource(isbnFailure = outage, recordResult = testCandidate(isbn = ISBN))
+
+        val e = assertFailsWith<SourceUnavailableException> { useCase(source)(hit) }
+        assertEquals(outage, e)
+        assertTrue(source.lookedUpRecordIds.isEmpty())
+    }
+
+    /** Review F15: on an interrupted request every further I/O would fail and count against a healthy source. */
+    @Test
+    fun `no fallback when the request was interrupted`() {
+        val interrupting = object : BookMetadataSource by FakeBookMetadataSource() {
+            val lookedUpRecords = mutableListOf<SourceRef>()
+            override fun findByIsbn(isbn: Isbn) = run {
+                Thread.currentThread().interrupt()
+                throw SourceUnavailableException(SourceId.of("dnb"))
+            }
+            override fun findByRecordId(ref: SourceRef) = null.also { lookedUpRecords += ref }
+        }
+
+        try {
+            assertFailsWith<SourceUnavailableException> { useCase(interrupting)(hit) }
+            assertTrue(interrupting.lookedUpRecords.isEmpty())
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     @Test
     fun `adding the same search hit twice is a conflict`() {
         val source = FakeBookMetadataSource(recordResult = testCandidate(isbn = ISBN))
@@ -225,7 +305,7 @@ class AddCatalogBookUseCaseTest {
         assertEquals(1, bookRepository.stored().size)
     }
 
-    // A hit whose data may not be stored, added by its ISBN (9.7 D1, D6)
+    // A hit whose data may not be stored, added by its ISBN alone (9.7 D1, D6)
 
     private val byIsbn = CatalogBookRef.ByIsbn(ISBN)
 

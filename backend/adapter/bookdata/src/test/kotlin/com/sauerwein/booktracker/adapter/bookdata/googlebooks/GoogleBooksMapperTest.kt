@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.adapter.bookdata.googlebooks
 
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,6 +26,7 @@ class GoogleBooksMapperTest {
                 GoogleIndustryIdentifier("ISBN_10", "3641023041"),
             ),
             imageLinks = GoogleImageLinks("http://books.google.com/books/content?id=_tiYRR30oe0C&printsec=frontcover&img=1&zoom=1"),
+            language = "de",
         ),
     )
 
@@ -42,6 +44,19 @@ class GoogleBooksMapperTest {
         assertEquals(679, candidate.pageCount)
         assertEquals(SourceRecordId("_tiYRR30oe0C"), candidate.sourceId)
         assertFalse(candidate.persistableInPublicCatalog)
+    }
+
+    /** 9.9 Q3: Google sends ISO 639-1, sometimes a full tag; both become the language subtag. */
+    @Test
+    fun `reads the volume's language`() {
+        assertEquals(Language.of("de"), mapper.toCandidate(volume)?.language)
+        assertEquals(Language.of("zh"), map(volume.volumeInfo!!.copy(language = "zh-CN"))?.language)
+    }
+
+    @Test
+    fun `has no language when Google sends none or an unreadable one`() {
+        assertNull(map(volume.volumeInfo!!.copy(language = null))?.language)
+        assertNull(map(volume.volumeInfo!!.copy(language = "und"))?.language)
     }
 
     @Test

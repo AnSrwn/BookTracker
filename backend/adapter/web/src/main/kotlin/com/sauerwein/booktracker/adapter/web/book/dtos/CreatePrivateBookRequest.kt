@@ -12,4 +12,9 @@ data class CreatePrivateBookRequest(
     val publicationYear: Int? = null,
     @field:Positive val pageCount: Int? = null,
     val coverUrl: String? = null,
+    /**
+     * Optional BCP 47 language tag. Normalised to its language subtag (`de-AT` → `de`, `ger` → `de`);
+     * anything that is not a language is a 400.
+     */
+    val language: String? = null,
 )

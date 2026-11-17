@@ -25,6 +25,9 @@
         "docs": [
           {
             "key": "/books/OL22650690M",
+            "language": [
+              "eng"
+            ],
             "title": "Eragon",
             "cover_i": 14829791,
             "publisher": [
@@ -62,6 +65,9 @@
         "docs": [
           {
             "key": "/books/OL37762833M",
+            "language": [
+              "rus"
+            ],
             "title": "Ėragon",
             "cover_i": 12672600,
             "publisher": [
@@ -96,6 +102,9 @@
         "docs": [
           {
             "key": "/books/OL40346106M",
+            "language": [
+              "eng"
+            ],
             "title": "Eragon; Eldest",
             "publisher": [
               "Penguin Random House"
@@ -129,6 +138,9 @@
         "docs": [
           {
             "key": "/books/OL62495560M",
+            "language": [
+              "ger"
+            ],
             "title": "Eragon: Der Auftrag des Ältesten",
             "cover_i": 15249290,
             "publisher": [
@@ -163,6 +175,9 @@
         "docs": [
           {
             "key": "/books/OL39476756M",
+            "language": [
+              "fre"
+            ],
             "title": "Eragon, Tome 04",
             "cover_i": 15174100,
             "publisher": [

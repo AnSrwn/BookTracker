@@ -12,20 +12,23 @@ val BookCandidate.isCatalogEligible: Boolean
 
 /**
  * Whether a hit not yet in the catalog may be offered for adding: eligible, and an ISBN so the
- * stored row can be matched to a later scan (D22). Adding fetches the full record first (D29).
+ * stored row can be matched to a later scan (D22). Adding resolves the ISBN first (9.9 Q10) and
+ * falls back to the hit's own full record (D29).
  */
 val BookCandidate.isAddable: Boolean
     get() = isCatalogEligible && isbn != null
 
 /**
  * How the app can add this result, or `null` if it cannot: the one rule, for every source.
- * A stored book by its id; an eligible hit by its source record (D29); a hit whose data may not
- * be stored by its ISBN alone, which adding resolves like a scan (9.7 D1, D6).
+ * A stored book by its id. Every other hit by its ISBN, which adding resolves like a scan, so a
+ * row looks the same however it was added (9.9 Q10) and a hit whose data may not be stored never
+ * enters the catalog itself (9.7 D1, D6). An eligible hit also carries its own record, the
+ * fallback when its ISBN resolves to nothing (D29).
  */
 val BookCandidate.addRef: CatalogBookRef?
     get() = when {
         bookId != null -> CatalogBookRef.Stored(bookId)
-        isAddable -> CatalogBookRef.SourceRecord(source, sourceId!!)
+        isAddable -> CatalogBookRef.ByIsbn(isbn!!, record = SourceRef(source, sourceId!!))
         !persistableInPublicCatalog && isbn != null -> CatalogBookRef.ByIsbn(isbn)
         else -> null
     }
@@ -50,6 +53,7 @@ fun BookCandidate.toCatalogBook(id: BookId, now: Instant): Book {
         publicationYear = publicationYear,
         pageCount = pageCount,
         coverUrl = coverUrl,
+        language = language,
         source = source,
         sourceId = sourceId,
         sourceFetchedAt = now,
@@ -68,6 +72,7 @@ fun Book.toCandidate() = BookCandidate(
     publicationYear = publicationYear,
     pageCount = pageCount,
     coverUrl = coverUrl,
+    language = language,
     source = source,
     sourceId = sourceId,
     workKey = workKey,
