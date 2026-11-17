@@ -72,12 +72,24 @@ class OpenLibraryMapperTest {
     }
 
     @Test
-    fun `drops records without title or author`() {
+    fun `drops records without a title`() {
         assertNull(map(edition.copy(title = " ")))
-        assertNull(mapper.toCandidate(edition, authors = emptyList()))
-        assertNull(mapper.toCandidate(edition, authors = listOf(Author(" ", ref = null))))
-        assertNull(mapper.toCandidate(OpenLibrarySearchDoc(title = "Eragon", authorName = emptyList())))
         assertNull(mapper.toCandidate(OpenLibrarySearchDoc(title = null, authorName = listOf("Paolini"))))
+    }
+
+    /** 9.10 Q9: a book may have no author. */
+    @Test
+    fun `keeps records without an author, with none`() {
+        assertEquals(emptyList(), mapper.toCandidate(edition, authors = emptyList())?.authors)
+        assertEquals(emptyList(), mapper.toCandidate(edition, authors = listOf(Author(" ", ref = null)))?.authors)
+        assertEquals(emptyList(), mapper.toCandidate(OpenLibrarySearchDoc(title = "Eragon", authorName = emptyList()))?.authors)
+    }
+
+    @Test
+    fun `flags authors from the work, but never an empty list`() {
+        assertEquals(true, mapper.toCandidate(edition, listOf(PAOLINI), authorsFromWork = true)?.authorsFromWork)
+        assertEquals(false, mapper.toCandidate(edition, emptyList(), authorsFromWork = true)?.authorsFromWork)
+        assertEquals(false, map(edition)?.authorsFromWork)
     }
 
     /** The licence bit travels with the record, so it must come from the descriptor, not be hardcoded. */

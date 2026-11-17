@@ -30,6 +30,7 @@ class BookCandidateMergeTest {
         language: Language? = null,
         workKey: String? = null,
         persistable: Boolean = true,
+        authorsFromWork: Boolean = false,
     ) = BookCandidate(
         title = title,
         authors = authors.map { Author(it, ref = null) },
@@ -43,6 +44,7 @@ class BookCandidateMergeTest {
         sourceId = SourceRecordId("$source-1"),
         workKey = workKey?.let(::SourceRecordId),
         persistableInPublicCatalog = persistable,
+        authorsFromWork = authorsFromWork,
     )
 
     /** As shipped, in made-up ids: the authority leads German editions, the finder everything else. */
@@ -135,6 +137,83 @@ class BookCandidateMergeTest {
         )
 
         assertEquals(listOf("Paolini, Christopher"), merged.authors.map { it.name })
+    }
+
+    /** 9.10 Q9: some books have no author (the Duden); the merge does not invent one. */
+    @Test
+    fun `a book nobody names an author for has none`() {
+        val merged = merge.merge(listOf(candidate(AUTHORITY, authors = emptyList()), candidate(COMMUNITY, authors = emptyList())), ISBN)
+
+        assertEquals(emptyList(), merged.authors)
+    }
+
+    @Test
+    fun `an empty author list does not hide a later provider's authors`() {
+        val merged = merge.merge(
+            listOf(candidate(AUTHORITY, authors = emptyList(), language = GERMAN), candidate(COMMUNITY, authors = listOf("Wolfgang Herrndorf"))),
+            ISBN,
+        )
+
+        assertEquals(listOf("Wolfgang Herrndorf"), merged.authors.map { it.name })
+    }
+
+    /**
+     * R16, A14: the Nibelungenlied. The authority rightly names nobody; the community's work credits
+     * two translators. A record of the edition itself beats the work, even without an author.
+     */
+    @Test
+    fun `work authors lose to a provider's own record of the edition, even one without authors`() {
+        val merged = merge.merge(
+            listOf(
+                candidate(AUTHORITY, authors = emptyList(), language = GERMAN),
+                candidate(COMMUNITY, authors = listOf("Siegfried Grosse", "Helmut Brackert"), authorsFromWork = true, coverUrl = "https://c/1.jpg"),
+            ),
+            ISBN,
+        )
+
+        assertEquals(emptyList(), merged.authors)
+        assertEquals(false, merged.authorsFromWork)
+        // The record still contributes everything else
+        assertEquals("https://c/1.jpg", merged.coverUrl)
+    }
+
+    /** A15 */
+    @Test
+    fun `work authors lose to another provider's authors even when ranked first`() {
+        val merged = merge.merge(
+            listOf(
+                candidate(FINDER, authors = listOf("Work Author"), authorsFromWork = true),
+                candidate(AUTHORITY, authors = listOf("Christopher Paolini")),
+            ),
+            ISBN,
+        )
+
+        assertEquals(listOf("Christopher Paolini"), merged.authors.map { it.name })
+    }
+
+    /** A1: *Pride and Prejudice* — only the community knows it, and only through the work. */
+    @Test
+    fun `work authors count when no other provider has the edition`() {
+        val merged = merge.merge(listOf(candidate(COMMUNITY, authors = listOf("Jane Austen"), authorsFromWork = true)), ISBN)
+
+        assertEquals(listOf("Jane Austen"), merged.authors.map { it.name })
+        assertEquals(true, merged.authorsFromWork)
+    }
+
+    /** A record whose authors came from the work may still name the row: only its authors rank last. */
+    @Test
+    fun `a record with work authors may still win the title`() {
+        val merged = merge.merge(
+            listOf(
+                candidate(FINDER, title = "Pride and Prejudice", authors = listOf("Jane Austen"), authorsFromWork = true),
+                candidate(AUTHORITY, title = "Stolz und Vorurteil", authors = emptyList()),
+            ),
+            ISBN,
+        )
+
+        assertEquals("Pride and Prejudice", merged.title)
+        assertEquals(FINDER, merged.source)
+        assertEquals(emptyList(), merged.authors)
     }
 
     /** ADR-007: a provider with nothing for a field contributes nothing; no rule asks who answered. */

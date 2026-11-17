@@ -215,9 +215,16 @@ class DnbMapperTest {
         assertEquals("Constantin von Jascheroff", withParticle.mapped(ERAGON_ISBN)?.authors?.single()?.name)
     }
 
+    /**
+     * 9.10 Q9: a book may have no author. This Georgian *Tschick* names Herrndorf only in the
+     * statement of responsibility (`245$c`), which is never read as an author.
+     */
     @Test
-    fun `yields nothing for a record without an author`() {
-        assertNull(tschick("138436708X").mapped(Isbn.of("9789941377150")))
+    fun `keeps a record without an author, with none`() {
+        val candidate = assertNotNull(tschick("138436708X").mapped(Isbn.of("9789941377150")))
+
+        assertEquals("Tschick, georgisch", candidate.title)
+        assertEquals(emptyList(), candidate.authors)
     }
 
     // Title (R17, Q2) — E13

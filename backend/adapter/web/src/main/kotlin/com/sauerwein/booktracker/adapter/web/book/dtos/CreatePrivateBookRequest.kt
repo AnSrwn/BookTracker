@@ -1,12 +1,12 @@
 package com.sauerwein.booktracker.adapter.web.book.dtos
 
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Positive
 
 data class CreatePrivateBookRequest(
     @field:NotBlank val title: String,
-    @field:NotEmpty val authors: List<@NotBlank String>,
+    /** Optional: a book may have no author — omitted, `null` and `[]` all mean none. Names that are sent must not be blank. */
+    val authors: List<@NotBlank String>? = null,
     val publisher: String? = null,
     val isbn: String? = null,
     val publicationYear: Int? = null,

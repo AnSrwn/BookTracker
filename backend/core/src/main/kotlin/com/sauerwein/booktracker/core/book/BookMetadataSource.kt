@@ -8,7 +8,8 @@ import com.sauerwein.booktracker.core.book.models.SourceRef
 
 /**
  * A miss is an empty list or `null`. A source that cannot answer at all throws
- * [SourceUnavailableException], so an outage never masquerades as "not found".
+ * [SourceUnavailableException], so an outage never masquerades as "not found". A candidate may
+ * have no author: a record without one is still a book (9.10 Q9).
  */
 interface BookMetadataSource {
     val descriptor: SourceDescriptor

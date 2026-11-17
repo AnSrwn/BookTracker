@@ -33,6 +33,19 @@ class FindBookByIsbnUseCaseTest {
         assertEquals(candidate.copy(bookId = stored.id, kind = BookKind.CATALOG), found)
     }
 
+    /** 9.10 R13 (review R1-5): the Duden has no author — a found book, stored like any other. */
+    @Test
+    fun `stores and returns a book without an author`() {
+        val candidate = testCandidate(title = "Duden", isbn = isbn).copy(authors = emptyList())
+        val source = FakeBookMetadataSource(isbnResult = candidate)
+
+        val found = useCase(source)(isbn)
+
+        val stored = bookRepository.stored().single()
+        assertEquals(emptyList(), stored.authors)
+        assertEquals(candidate.copy(bookId = stored.id, kind = BookKind.CATALOG), found)
+    }
+
     @Test
     fun `looks the book up by ISBN and never runs a text search`() {
         val source = FakeBookMetadataSource(isbnResult = testCandidate(isbn = isbn))

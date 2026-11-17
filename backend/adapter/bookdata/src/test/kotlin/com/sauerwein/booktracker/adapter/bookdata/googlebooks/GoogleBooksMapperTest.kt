@@ -96,9 +96,15 @@ class GoogleBooksMapperTest {
     }
 
     @Test
-    fun `drops a volume without a title or an author`() {
+    fun `drops a volume without a title`() {
         assertNull(map(volume.volumeInfo!!.copy(title = " ")))
-        assertNull(map(volume.volumeInfo!!.copy(authors = emptyList())))
         assertNull(mapper.toCandidate(GoogleVolume(id = "x", volumeInfo = null)))
+    }
+
+    /** 9.10 Q9: a book may have no author. */
+    @Test
+    fun `keeps a volume without an author, with none`() {
+        assertEquals(emptyList(), map(volume.volumeInfo!!.copy(authors = null))?.authors)
+        assertEquals(emptyList(), map(volume.volumeInfo!!.copy(authors = listOf(" ")))?.authors)
     }
 }

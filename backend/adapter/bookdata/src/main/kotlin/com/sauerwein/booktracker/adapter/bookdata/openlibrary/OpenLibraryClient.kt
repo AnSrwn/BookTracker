@@ -16,7 +16,10 @@ private const val SEARCH_FIELDS =
         "editions,editions.key,editions.title,editions.isbn,editions.publish_year,editions.cover_i,editions.publisher," +
         "editions.language"
 
-/** Every author is one more request — and at 1 req/s one more second of scan latency. */
+/**
+ * Every author is one more request — and at 1 req/s one more second of scan latency. An edition
+ * without a resolvable author costs one more for its work: at most 1 + 2 + 1 + 2 requests.
+ */
 private const val MAX_RESOLVED_AUTHORS = 2
 
 class OpenLibraryException(message: String) : BookSourceException(message)
@@ -70,15 +73,41 @@ class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource
         return toCandidate(edition)
     }
 
+    /**
+     * The edition's own authors; if it yields no name — it lists none, or none resolves — the
+     * authors of its work (9.10 R9). Many editions name their author only on the work (*Pride and
+     * Prejudice* `9780141439518`). Work authors are flagged, since the merge ranks them last: a
+     * work may credit translators of an anonymous text as authors (R16). With no name from either,
+     * the book has no author (Q9).
+     */
     private fun toCandidate(edition: OpenLibraryEdition): BookCandidate? {
-        // An author that cannot be resolved is skipped; the mapper drops the record only if none is left.
-        // The keys are third-party data: only a validated id goes into a path, never the raw key
-        val authors = edition.authors.orEmpty()
-            .mapNotNull { it.key?.let(::authorIdOrNull) }
+        // The mapper drops a record without a title; no author or work request is spent on it
+        if (edition.title.isNullOrBlank()) return null
+
+        val editionAuthors = resolveAuthors(edition.authors.orEmpty().map { it.key })
+        if (editionAuthors.isNotEmpty()) return mapper.toCandidate(edition = edition, authors = editionAuthors)
+
+        val workAuthors = firstWorkIdOrNull(edition)?.let(::findWorkAuthors).orEmpty()
+        return mapper.toCandidate(edition = edition, authors = workAuthors, authorsFromWork = true)
+    }
+
+    /**
+     * An author that cannot be resolved — missing, or without a name — is skipped. The keys are third-party data: only a
+     * validated id goes into a path, never the raw key.
+     */
+    private fun resolveAuthors(keys: List<String?>): List<Author> =
+        keys.mapNotNull { it?.let(::authorIdOrNull) }
             .take(MAX_RESOLVED_AUTHORS)
             .mapNotNull(::findAuthor)
 
-        return mapper.toCandidate(edition = edition, authors = authors)
+    /** A work that is missing (404) has no authors; any other failure fails the lookup, like an author call. */
+    private fun findWorkAuthors(workId: SourceRecordId): List<Author> {
+        val work = restClient.get()
+            .uri("/works/{id}.json", workId.value)
+            .exchange { _, response -> response.readJsonOrNull<OpenLibraryWork>() }
+            ?: return emptyList()
+
+        return resolveAuthors(work.authors.orEmpty().map { it.author?.key })
     }
 
     private fun findAuthor(authorId: SourceRecordId): Author? {
@@ -86,6 +115,7 @@ class OpenLibraryClient(private val restClient: RestClient) : BookMetadataSource
             .uri("/authors/{id}.json", authorId.value)
             .exchange { _, response -> response.readJsonOrNull<OpenLibraryAuthor>() }
             ?.name
+            ?.takeIf { it.isNotBlank() }
             ?: return null
 
         return Author(name, mapper.authorRef(authorId))

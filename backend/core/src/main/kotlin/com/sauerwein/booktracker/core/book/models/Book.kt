@@ -13,6 +13,7 @@ data class Book(
     val id: BookId,
     val ownerId: UserId?,
     val title: String,
+    /** May be empty: anonymous, sacred, reference and edited works have no author (the Duden, the Bible). */
     val authors: List<Author>,
     val publisher: String?,
     val isbn: Isbn?,
@@ -30,7 +31,6 @@ data class Book(
 ) {
     init {
         require(title.isNotBlank()) { "Title must not be blank" }
-        require(authors.isNotEmpty()) { "A book needs at least one author" }
         require(authors.all { it.name.isNotBlank() }) { "Author names must not be blank" }
         require(pageCount == null || pageCount > 0) { "Page count must be positive" }
 

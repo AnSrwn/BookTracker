@@ -11,11 +11,11 @@ import kotlin.test.assertFailsWith
 
 class BookTest {
 
-    private fun book(coverUrl: String?) = Book(
+    private fun book(coverUrl: String?, authors: List<Author> = listOf(Author("Frank Herbert", ref = null))) = Book(
         id = BookId(UUID.randomUUID()),
         ownerId = UserId(UUID.randomUUID()),
         title = "Dune",
-        authors = listOf(Author("Frank Herbert", ref = null)),
+        authors = authors,
         publisher = null,
         isbn = null,
         publicationYear = null,
@@ -29,6 +29,16 @@ class BookTest {
         createdAt = Instant.EPOCH,
         updatedAt = Instant.EPOCH,
     )
+
+    @Test
+    fun `a book may have no author`() {
+        assertEquals(emptyList(), book(coverUrl = null, authors = emptyList()).authors)
+    }
+
+    @Test
+    fun `rejects a blank author name`() {
+        assertFailsWith<IllegalArgumentException> { book(coverUrl = null, authors = listOf(Author("  ", ref = null))) }
+    }
 
     @Test
     fun `accepts an https cover URL`() {

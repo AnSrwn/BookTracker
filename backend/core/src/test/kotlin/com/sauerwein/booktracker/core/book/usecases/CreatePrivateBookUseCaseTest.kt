@@ -76,6 +76,15 @@ class CreatePrivateBookUseCaseTest {
         assertEquals(Language.of("en"), book.language)
     }
 
+    /** The Duden or an anthology has no author; the user must not have to invent one (9.10 Q9). */
+    @Test
+    fun `creates a private book without an author`() {
+        val book = createPrivateBook(command.copy(title = "Duden", authors = emptyList()))
+
+        assertEquals(emptyList(), book.authors)
+        assertEquals(book, bookRepository.findVisible(book.id, userId))
+    }
+
     @Test
     fun `a private book without a language has none`() {
         assertNull(createPrivateBook(command.copy(language = null)).language)

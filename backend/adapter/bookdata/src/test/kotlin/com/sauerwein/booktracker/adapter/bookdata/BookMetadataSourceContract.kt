@@ -77,7 +77,8 @@ abstract class BookMetadataSourceContract {
         assertEquals(descriptor.id, candidate.source, where)
         assertEquals(descriptor.persistableInPublicCatalog, candidate.persistableInPublicCatalog, where)
         assertTrue(candidate.title.isNotBlank(), where)
-        assertTrue(candidate.authors.isNotEmpty() && candidate.authors.all { it.name.isNotBlank() }, where)
+        // A book may have no author (9.10 Q9); an author that is named has a name
+        assertTrue(candidate.authors.all { it.name.isNotBlank() }, where)
         candidate.authors.forEach { author -> author.ref?.let { assertEquals(descriptor.id, it.source, "$where, author ${author.name}") } }
         candidate.pageCount?.let { assertTrue(it > 0, "$where: page count $it") }
         candidate.coverUrl?.let { assertTrue(it.startsWith("https://"), "$where: cover $it") }
