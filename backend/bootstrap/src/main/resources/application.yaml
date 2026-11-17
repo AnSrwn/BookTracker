@@ -46,8 +46,10 @@ booktracker:
     open-library:
       enabled: ${BOOKTRACKER_OPEN_LIBRARY_ENABLED:true}
       base-url: https://openlibrary.org
-      connect-timeout: 1s
-      read-timeout: 3s
+      # Generous on purpose: its TLS handshake alone took 2-7 s on some days (9.8, 9.10), and with
+      # 1s/3s every call failed. A scan waits for the slowest provider anyway (no deadline, 9.9 Q14)
+      connect-timeout: 5s
+      read-timeout: 10s
       # The contact User-Agent would allow 3; the limit is per IP and blocking is the penalty
       rate-per-second: 1
     google-books:
