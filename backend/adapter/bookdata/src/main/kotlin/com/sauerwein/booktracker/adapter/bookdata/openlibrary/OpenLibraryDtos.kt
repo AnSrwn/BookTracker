@@ -17,6 +17,8 @@ data class OpenLibraryEdition(
     @JsonProperty("isbn_10") val isbn10: List<String>? = null,
     val covers: List<Long>? = null,
     val works: List<OpenLibraryKeyRef>? = null,
+    /** `/languages/ger`: MARC codes, i.e. ISO 639-2/B. */
+    val languages: List<OpenLibraryKeyRef>? = null,
 )
 
 data class OpenLibraryKeyRef(val key: String? = null)
@@ -52,4 +54,9 @@ data class OpenLibrarySearchEdition(
     @JsonProperty("publish_year") val publishYear: List<Int>? = null,
     @JsonProperty("cover_i") val coverId: Long? = null,
     val publisher: List<String>? = null,
+    /**
+     * This edition's languages as MARC codes (`ger`). Not the work-level `language`, which lists
+     * every translation of the work (Eragon: `fre, spa, ita, …`).
+     */
+    val language: List<String>? = null,
 )

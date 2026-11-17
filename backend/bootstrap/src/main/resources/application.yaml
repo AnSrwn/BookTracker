@@ -1,6 +1,10 @@
 spring:
   application:
     name: BookTracker
+  threads:
+    virtual:
+      # Request threads are virtual too; the book sources are asked on virtual threads either way
+      enabled: true
   web:
     locale: en
     locale-resolver: fixed
@@ -17,18 +21,27 @@ booktracker:
   bookdata:
     # Open Library asks for a contact User-Agent
     user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
-    # Source ids in the order their answers are used. Google finds books, the CC0 sources
-    # describe the ones we keep (ADR-007); Google does no ISBN lookup (9.7 D7), DNB no search.
+    # Google finds books, the CC0 sources describe the ones we keep (ADR-007); Google does no
+    # ISBN lookup (9.7 D7), DNB no search. Every source that can serve a query is asked, in parallel.
     order:
+      # The order search hits are listed in
       search: [google_books, open_library]
-      # One ISBN order per ISBN group (IsbnGroup in adapter:bookdata)
-      isbn:
-        # DNB as the fallback: it also holds translations of German works and German-language
-        # books from foreign publishers, which carry foreign ISBNs
-        default: [open_library, dnb]
-        # 978-3, German-language ISBNs (DE, AT, CH): by legal deposit DNB receives essentially
-        # every German-language printing, so its record is the authority for these editions
-        german-language: [dnb, open_library]
+    # Which source's value wins a field when several describe the same edition (same ISBN):
+    # first non-null wins over the list (MergePrecedence in adapter:bookdata). A field's list is
+    # looked up as: the language's own list for the field, its `fields`, then the same in `default`.
+    # Per-field lists: title, authors, publisher, publication-year, page-count, cover, work-key.
+    precedence:
+      # Decides the book's language first, the same for every book
+      language: [dnb, open_library, google_books]
+      default:
+        fields: [google_books, open_library, dnb]
+        cover: [open_library, google_books]
+      by-language:
+        # By legal deposit DNB receives essentially every German-language printing, so its record
+        # is the authority for these editions
+        de:
+          fields: [dnb, google_books, open_library]
+          cover: [google_books, open_library]
     # One uniform block per provider. `enabled: false` removes it from the running application.
     open-library:
       enabled: ${BOOKTRACKER_OPEN_LIBRARY_ENABLED:true}

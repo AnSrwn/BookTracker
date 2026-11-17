@@ -6,6 +6,7 @@ private const val COVERS_BASE_URL = "https://covers.openlibrary.org/b"
 private const val EDITION_KEY_PREFIX = "/books/"
 private const val AUTHOR_KEY_PREFIX = "/authors/"
 private const val WORK_KEY_PREFIX = "/works/"
+private const val LANGUAGE_KEY_PREFIX = "/languages/"
 private val AUTHOR_ID = Regex("OL[0-9]+A")
 private val WORK_ID = Regex("OL[0-9]+W")
 private val EDITION_ID = Regex("OL[0-9]+M")
@@ -31,6 +32,7 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
             publicationYear = edition.publishDate?.let { YEAR.find(it)?.value?.toInt() },
             pageCount = edition.numberOfPages?.takeIf { it > 0 },
             coverUrl = coverUrl,
+            language = edition.languages?.firstNotNullOfOrNull { ref -> ref.key?.removePrefix(LANGUAGE_KEY_PREFIX)?.let(Language::ofOrNull) },
             source = descriptor.id,
             sourceId = edition.key?.removePrefix(EDITION_KEY_PREFIX)?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
             workKey = edition.works?.firstNotNullOfOrNull { ref -> ref.key?.let(::workIdOrNull) },
@@ -72,6 +74,8 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
             publicationYear = year,
             pageCount = null,
             coverUrl = coverId?.let { "$COVERS_BASE_URL/id/$it-L.jpg?default=false" },
+            // The edition's own language only: the work's list holds every translation
+            language = edition?.language?.firstNotNullOfOrNull(Language::ofOrNull),
             source = descriptor.id,
             sourceId = sourceId,
             workKey = doc.key?.let(::workIdOrNull),

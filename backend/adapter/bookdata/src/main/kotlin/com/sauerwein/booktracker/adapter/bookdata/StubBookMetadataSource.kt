@@ -37,6 +37,7 @@ class StubBookMetadataSource : BookMetadataSource {
         publicationYear = 2014,
         pageCount = 733,
         coverUrl = null,
+        language = Language.of("de"),
         source = descriptor.id,
         sourceId = SourceRecordId("1055026991"),
         workKey = null,

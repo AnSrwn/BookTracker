@@ -21,6 +21,7 @@ class BookTest {
         publicationYear = null,
         pageCount = null,
         coverUrl = coverUrl,
+        language = null,
         source = SourceId.MANUAL,
         sourceId = null,
         sourceFetchedAt = null,

@@ -21,6 +21,8 @@ data class GoogleVolumeInfo(
     /** Library-scan records often carry only `OTHER` identifiers and no ISBN at all. */
     val industryIdentifiers: List<GoogleIndustryIdentifier>? = null,
     val imageLinks: GoogleImageLinks? = null,
+    /** ISO 639-1 (`de`), sometimes a full tag (`zh-CN`). */
+    val language: String? = null,
 )
 
 data class GoogleIndustryIdentifier(

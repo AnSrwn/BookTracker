@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.adapter.bookdata.googlebooks
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 
@@ -36,6 +37,7 @@ class GoogleBooksMapper(private val descriptor: SourceDescriptor) {
             pageCount = info.pageCount?.takeIf { it > 0 },
             // Google hands out http links; the app must never load mixed content
             coverUrl = info.imageLinks?.thumbnail?.replaceFirst("http://", "https://"),
+            language = Language.ofOrNull(info.language),
             source = descriptor.id,
             sourceId = volume.id?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
             workKey = null,

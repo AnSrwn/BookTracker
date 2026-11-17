@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.adapter.web.book.dtos.BookResponse
 import com.sauerwein.booktracker.adapter.web.book.dtos.CreatePrivateBookRequest
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.kind
 import com.sauerwein.booktracker.core.book.usecases.CreatePrivateBookCommand
 
@@ -15,6 +16,7 @@ fun CreatePrivateBookRequest.toCommand() = CreatePrivateBookCommand(
     publicationYear = publicationYear,
     pageCount = pageCount,
     coverUrl = coverUrl,
+    language = language?.let(Language::of),
 )
 
 fun Book.toResponse() = BookResponse(
@@ -27,6 +29,7 @@ fun Book.toResponse() = BookResponse(
     publicationYear = publicationYear,
     pageCount = pageCount,
     coverUrl = coverUrl,
+    language = language?.value,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )

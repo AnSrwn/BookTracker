@@ -18,7 +18,7 @@ class FindBookByIsbnUseCaseTest {
         ResolveIsbnUseCase(
             bookRepository = bookRepository,
             bookMetadataSource = source,
-            upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(bookRepository, Clock.systemUTC()),
+            storeCatalogEntryUseCase = StoreCatalogEntryUseCase(bookRepository, Clock.systemUTC()),
         )
     )
 
@@ -111,13 +111,13 @@ class FindBookByIsbnUseCaseTest {
     fun `still returns the candidate when the catalog write conflicts`() {
         val candidate = testCandidate(isbn = isbn)
         val conflicting = object : BookRepository by bookRepository {
-            override fun upsertCatalogEntry(book: Book): Book? =
+            override fun storeCatalogEntry(book: Book): Book? =
                 throw ConflictException(code = "DuplicateBook", message = "taken")
         }
         val resolver = ResolveIsbnUseCase(
             bookRepository = conflicting,
             bookMetadataSource = FakeBookMetadataSource(isbnResult = candidate),
-            upsertCatalogEntryUseCase = UpsertCatalogEntryUseCase(conflicting, Clock.systemUTC()),
+            storeCatalogEntryUseCase = StoreCatalogEntryUseCase(conflicting, Clock.systemUTC()),
         )
 
         assertEquals(candidate, FindBookByIsbnUseCase(resolver)(isbn))

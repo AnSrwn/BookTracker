@@ -34,14 +34,14 @@ class UseCaseConfig {
     fun addCatalogBookUseCase(
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
-        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
+        storeCatalogEntryUseCase: StoreCatalogEntryUseCase,
         resolveIsbnUseCase: ResolveIsbnUseCase,
         currentUserProvider: CurrentUserProvider,
         clock: Clock,
     ) = AddCatalogBookUseCase(
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
-        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
+        storeCatalogEntryUseCase = storeCatalogEntryUseCase,
         resolveIsbnUseCase = resolveIsbnUseCase,
         currentUserProvider = currentUserProvider,
         clock = clock,
@@ -73,7 +73,7 @@ class UseCaseConfig {
     )
 
     @Bean
-    fun upsertCatalogEntryUseCase(bookRepository: BookRepository, clock: Clock) = UpsertCatalogEntryUseCase(
+    fun storeCatalogEntryUseCase(bookRepository: BookRepository, clock: Clock) = StoreCatalogEntryUseCase(
         bookRepository = bookRepository,
         clock = clock,
     )
@@ -82,11 +82,11 @@ class UseCaseConfig {
     fun resolveIsbnUseCase(
         bookRepository: BookRepository,
         bookMetadataSource: BookMetadataSource,
-        upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
+        storeCatalogEntryUseCase: StoreCatalogEntryUseCase,
     ) = ResolveIsbnUseCase(
         bookRepository = bookRepository,
         bookMetadataSource = bookMetadataSource,
-        upsertCatalogEntryUseCase = upsertCatalogEntryUseCase,
+        storeCatalogEntryUseCase = storeCatalogEntryUseCase,
     )
 
     @Bean

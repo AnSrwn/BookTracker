@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.book.models.SourceRef
@@ -19,6 +20,8 @@ fun BookEntity.toDomain() = Book(
     publicationYear = publicationYear,
     pageCount = pageCount,
     coverUrl = coverUrl,
+    // Reading a stored row never fails over its language: one `Language` no longer accepts reads as unknown
+    language = Language.ofOrNull(language),
     source = SourceId.of(source),
     sourceId = sourceId?.let(::SourceRecordId),
     sourceFetchedAt = sourceFetchedAt,
@@ -37,6 +40,7 @@ fun Book.toEntity() = BookEntity(
     publicationYear = publicationYear,
     pageCount = pageCount,
     coverUrl = coverUrl,
+    language = language?.value,
     source = source.value,
     sourceId = sourceId?.value,
     sourceFetchedAt = sourceFetchedAt,

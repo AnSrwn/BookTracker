@@ -19,6 +19,7 @@ data class BookEntity(
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
+    val language: String?,
     val source: String,
     val sourceId: String?,
     val sourceFetchedAt: Instant?,

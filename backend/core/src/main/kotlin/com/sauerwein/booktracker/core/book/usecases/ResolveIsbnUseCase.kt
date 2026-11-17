@@ -18,7 +18,7 @@ import com.sauerwein.booktracker.core.book.models.toCandidate
 class ResolveIsbnUseCase(
     private val bookRepository: BookRepository,
     private val bookMetadataSource: BookMetadataSource,
-    private val upsertCatalogEntryUseCase: UpsertCatalogEntryUseCase,
+    private val storeCatalogEntryUseCase: StoreCatalogEntryUseCase,
 ) {
     /** For the scan: the catalog book if there is one, else the source's answer as it is. */
     operator fun invoke(isbn: Isbn): BookCandidate? = when (val resolution = resolve(isbn)) {
@@ -34,7 +34,7 @@ class ResolveIsbnUseCase(
         bookRepository.findCatalogByIsbn(isbn)?.let { return Resolution.Stored(it) }
 
         val candidate = bookMetadataSource.findByIsbn(isbn) ?: return null
-        return upsertCatalogEntryUseCase(candidate)?.let(Resolution::Stored) ?: Resolution.NotStored(candidate)
+        return storeCatalogEntryUseCase(candidate)?.let(Resolution::Stored) ?: Resolution.NotStored(candidate)
     }
 
     private sealed interface Resolution {

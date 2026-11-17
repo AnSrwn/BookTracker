@@ -57,9 +57,11 @@ class SearchCatalogUseCase(
     }
 
     /**
-     * 9.7 D10: a hit is dropped when an earlier catalog result already has its ISBN — first one
-     * wins as it is, merging fields is 9.9. The caller's private books suppress nothing (A4): a
-     * catalog copy and a private copy of one ISBN may sit side by side (9.6 D12).
+     * 9.7 D10: a hit is dropped when an earlier catalog result already has its ISBN. External hits
+     * arrive merged per ISBN from the source (9.9); a stored row is never merged with them but
+     * shown as stored, because that is the row the user would add. The caller's private books
+     * suppress nothing (A4): a catalog copy and a private copy of one ISBN may sit side by side
+     * (9.6 D12).
      */
     private fun withoutIsbnDuplicates(results: List<BookCandidate>): List<BookCandidate> {
         val seen = mutableSetOf<Isbn>()

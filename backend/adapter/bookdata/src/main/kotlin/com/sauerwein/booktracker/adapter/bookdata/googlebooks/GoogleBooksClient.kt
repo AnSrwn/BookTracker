@@ -20,12 +20,12 @@ private const val MAX_RESULTS = 10
 
 /** Exactly what the mapper reads, so a response stays small. */
 private const val FIELDS =
-    "items(id,volumeInfo(title,authors,publisher,publishedDate,pageCount,industryIdentifiers,imageLinks/thumbnail))"
+    "items(id,volumeInfo(title,authors,publisher,publishedDate,pageCount,industryIdentifiers,imageLinks/thumbnail,language))"
 
 /**
  * `503` is common at Google (5 of 8 calls in one run in October 2026): retried, unlike a spent
- * quota. One retry only (9.7 D12): until 9.9 asks the providers in parallel, every retry delays
- * Open Library, which is asked after Google.
+ * quota. One retry (9.7 D12). Since 9.9 the providers are asked in parallel, so a retry no longer
+ * delays the others — only the search's answer, which waits for every provider.
  */
 private const val MAX_ATTEMPTS = 2
 

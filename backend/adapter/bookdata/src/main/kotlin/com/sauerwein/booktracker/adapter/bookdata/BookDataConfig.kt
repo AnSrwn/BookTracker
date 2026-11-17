@@ -22,28 +22,33 @@ class BookDataConfig {
     ): BookMetadataSource {
         val sources = registrations.orderedStream().map { it.source }.toList()
         val searchOrder = properties.order.search.map(SourceId::of)
-        val isbnOrder = properties.order.isbn.toIsbnOrder()
-        val composite = CompositeBookMetadataSource(sources = sources, searchOrder = searchOrder, isbnOrder = isbnOrder)
+        val precedence = properties.precedence.toMergePrecedence()
+        val composite = CompositeBookMetadataSource(
+            sources = sources,
+            searchOrder = searchOrder,
+            merge = BookCandidateMerge(precedence),
+        )
 
-        val orders =
-            mapOf("search" to searchOrder) + isbnOrder.all.mapKeys { (name, _) -> "isbn.${name.replace('_', '-')}" }
-        orders.forEach { (list, order) ->
+        val lists = mapOf("order.search" to searchOrder) + precedence.all.mapKeys { (path, _) -> "precedence.$path" }
+        lists.forEach { (path, order) ->
             val unmatched = CompositeBookMetadataSource.unmatchedOrderIds(order, sources)
             if (unmatched.isNotEmpty()) {
                 log.warn(
-                    "booktracker.bookdata.order.{} lists {}, which matches no running source (disabled or misspelled)",
-                    list,
-                    unmatched
+                    "booktracker.bookdata.{} lists {}, which matches no running source (disabled or misspelled)",
+                    path,
+                    unmatched,
                 )
             }
         }
 
-        val isbnLookup = mapOf(IsbnOrder.DEFAULT_NAME to composite.isbnProviders) +
-                composite.isbnProvidersByGroup.mapKeys { (group, _) -> group.name.lowercase() }
         log.info(
-            "Book sources: search {}, ISBN lookup {}",
+            "Book sources: search {}, ISBN lookup {} (asked in parallel, merged)",
             composite.searchProviders.map { it.descriptor.id },
-            isbnLookup.entries.joinToString { (name, providers) -> "$name ${providers.map { it.descriptor.id }}" },
+            composite.isbnProviders.map { it.descriptor.id },
+        )
+        log.info(
+            "Book field precedence: {}",
+            precedence.all.filterValues { it.isNotEmpty() }.entries.joinToString { (path, order) -> "$path $order" },
         )
         if (composite.searchProviders.isEmpty() && composite.isbnProviders.isEmpty()) {
             log.warn("No book source is enabled: search and scan answer from the catalog only")

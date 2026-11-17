@@ -4,6 +4,7 @@ import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Book
 import com.sauerwein.booktracker.core.book.models.BookId
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import com.sauerwein.booktracker.core.user.UserId
@@ -18,6 +19,7 @@ fun testBook(
     isbn: Isbn? = null,
     source: SourceId = SourceId.MANUAL,
     sourceId: SourceRecordId? = null,
+    language: Language? = null,
 ) = Book(
     id = id,
     ownerId = ownerId,
@@ -28,6 +30,7 @@ fun testBook(
     publicationYear = null,
     pageCount = null,
     coverUrl = null,
+    language = language,
     source = source,
     sourceId = sourceId,
     sourceFetchedAt = null,

@@ -19,6 +19,7 @@ data class Book(
     val publicationYear: Int?,
     val pageCount: Int?,
     val coverUrl: String?,
+    val language: Language?,
     val source: SourceId,
     val sourceId: SourceRecordId?,
     val sourceFetchedAt: Instant?,

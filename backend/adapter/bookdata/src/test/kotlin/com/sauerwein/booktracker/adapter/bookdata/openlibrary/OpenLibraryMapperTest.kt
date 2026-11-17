@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.adapter.bookdata.openlibrary
 import com.sauerwein.booktracker.adapter.bookdata.openLibraryRef
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
 import kotlin.test.Test
@@ -24,6 +25,15 @@ class OpenLibraryMapperTest {
         isbn13 = listOf("9780375826689"),
         covers = listOf(15244834),
     )
+
+    /** 9.9 Q3: MARC codes as Open Library keys them, normalised to the language subtag. */
+    @Test
+    fun `reads an edition's language from its first readable language key`() {
+        val english = edition.copy(languages = listOf(OpenLibraryKeyRef("/languages/xyz1"), OpenLibraryKeyRef("/languages/eng")))
+
+        assertEquals(Language.of("en"), mapper.toCandidate(english, listOf(PAOLINI))?.language)
+        assertNull(mapper.toCandidate(edition, listOf(PAOLINI))?.language)
+    }
 
     @Test
     fun `reads the year from free-form publish dates`() {
@@ -209,6 +219,19 @@ class OpenLibraryMapperTest {
         assertEquals(2006, candidate?.publicationYear)
         assertEquals("https://covers.openlibrary.org/b/id/14829791-L.jpg?default=false", candidate?.coverUrl)
         assertEquals("Knopf", candidate?.publisher)
+    }
+
+    /** 9.9 Q3: the edition's own language only — the work's list holds every translation. */
+    @Test
+    fun `takes a search hit's language from its matching edition`() {
+        val doc = searchDoc(OpenLibrarySearchEdition(key = "/books/OL62495560M", title = "Eragon: Der Auftrag des Ältesten", language = listOf("ger")))
+
+        assertEquals(Language.of("de"), mapper.toCandidate(doc)?.language)
+    }
+
+    @Test
+    fun `a search hit without an edition has no language`() {
+        assertNull(mapper.toCandidate(searchDoc())?.language)
     }
 
     @Test

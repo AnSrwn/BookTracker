@@ -13,7 +13,8 @@ private const val SEARCH_LIMIT = 10
 /** `editions…` makes every hit edition-level: one matching edition with its own key and ISBNs. */
 private const val SEARCH_FIELDS =
     "key,title,author_name,author_key,first_publish_year,cover_i," +
-        "editions,editions.key,editions.title,editions.isbn,editions.publish_year,editions.cover_i,editions.publisher"
+        "editions,editions.key,editions.title,editions.isbn,editions.publish_year,editions.cover_i,editions.publisher," +
+        "editions.language"
 
 /** Every author is one more request — and at 1 req/s one more second of scan latency. */
 private const val MAX_RESOLVED_AUTHORS = 2

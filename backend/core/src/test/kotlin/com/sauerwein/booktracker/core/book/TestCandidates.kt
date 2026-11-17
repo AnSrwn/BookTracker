@@ -3,6 +3,7 @@ package com.sauerwein.booktracker.core.book
 import com.sauerwein.booktracker.core.book.models.Author
 import com.sauerwein.booktracker.core.book.models.BookCandidate
 import com.sauerwein.booktracker.core.book.models.Isbn
+import com.sauerwein.booktracker.core.book.models.Language
 import com.sauerwein.booktracker.core.book.models.SourceDescriptor
 import com.sauerwein.booktracker.core.book.models.SourceId
 import com.sauerwein.booktracker.core.book.models.SourceRecordId
@@ -28,6 +29,7 @@ fun testCandidate(
     source: SourceId = SourceId.of("test_source"),
     sourceId: SourceRecordId? = SourceRecordId("test-record-1"),
     persistableInPublicCatalog: Boolean = true,
+    language: Language? = null,
 ) = BookCandidate(
     title = title,
     authors = listOf(Author(author, ref = null)),
@@ -36,6 +38,7 @@ fun testCandidate(
     publicationYear = null,
     pageCount = null,
     coverUrl = null,
+    language = language,
     source = source,
     sourceId = sourceId,
     workKey = null,
