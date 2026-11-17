@@ -3,11 +3,7 @@ package com.sauerwein.booktracker.adapter.bookdata
 import com.sauerwein.booktracker.core.book.BookMetadataSource
 import com.sauerwein.booktracker.core.book.exception.SourceQuotaExhaustedException
 import com.sauerwein.booktracker.core.book.exception.SourceUnavailableException
-import com.sauerwein.booktracker.core.book.models.BookCandidate
-import com.sauerwein.booktracker.core.book.models.Isbn
-import com.sauerwein.booktracker.core.book.models.SourceDescriptor
-import com.sauerwein.booktracker.core.book.models.SourceId
-import com.sauerwein.booktracker.core.book.models.SourceRef
+import com.sauerwein.booktracker.core.book.models.*
 
 /**
  * All providers behind the one port. Which provider serves which query comes from its
@@ -19,12 +15,14 @@ import com.sauerwein.booktracker.core.book.models.SourceRef
  * spent quota (D11). A spent quota alone does not turn a miss into an outage while another
  * provider answered cleanly: otherwise every miss would be a 503 until the quota resets.
  *
+ * The ISBN order can differ per ISBN group ([IsbnOrder]); which providers exist never does.
+ *
  * Sequential for now; parallel fan-out and the field merge are 9.9.
  */
 class CompositeBookMetadataSource(
     private val sources: List<BookMetadataSource>,
     searchOrder: List<SourceId>,
-    isbnOrder: List<SourceId>,
+    isbnOrder: IsbnOrder,
 ) : BookMetadataSource {
 
     init {
@@ -35,8 +33,14 @@ class CompositeBookMetadataSource(
     val searchProviders: List<BookMetadataSource> =
         ordered(sources.filter { it.descriptor.supportsFreeTextSearch }, searchOrder)
 
-    val isbnProviders: List<BookMetadataSource> =
-        ordered(sources.filter { it.descriptor.supportsIsbnLookup }, isbnOrder)
+    private val isbnCapable = sources.filter { it.descriptor.supportsIsbnLookup }
+
+    /** The ISBN providers for an ISBN in no group, or in a group without its own order. */
+    val isbnProviders: List<BookMetadataSource> = ordered(isbnCapable, isbnOrder.default)
+
+    /** The ISBN providers per group: every provider that can look up ISBNs, only the order differs. */
+    val isbnProvidersByGroup: Map<IsbnGroup, List<BookMetadataSource>> =
+        IsbnGroup.entries.associateWith { group -> ordered(isbnCapable, isbnOrder.forGroup(group)) }
 
     override val descriptor = SourceDescriptor(
         id = COMPOSITE_ID,
@@ -55,10 +59,14 @@ class CompositeBookMetadataSource(
         return hits
     }
 
-    /** The first provider that knows the ISBN wins, and the rest are not asked. */
+    /**
+     * Asked in the order configured for the ISBN's group. The first provider that knows the
+     * ISBN wins, and the rest are not asked.
+     */
     override fun findByIsbn(isbn: Isbn): BookCandidate? {
+        val providers = IsbnGroup.of(isbn)?.let(isbnProvidersByGroup::getValue) ?: isbnProviders
         val outcome = Outcome()
-        for (provider in isbnProviders) {
+        for (provider in providers) {
             outcome.ask(provider) { provider.findByIsbn(isbn) }?.let { return it }
         }
 

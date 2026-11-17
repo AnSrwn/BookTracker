@@ -1,5 +1,6 @@
 package com.sauerwein.booktracker.adapter.bookdata
 
+import com.sauerwein.booktracker.core.book.models.SourceId
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
@@ -15,6 +16,7 @@ data class BookDataProperties(
     val order: Order = Order(),
     val openLibrary: ProviderProperties? = null,
     val googleBooks: ProviderProperties? = null,
+    val dnb: ProviderProperties? = null,
 ) {
     /**
      * Source ids in the order their answers are used. Providers that are not listed come after
@@ -23,8 +25,24 @@ data class BookDataProperties(
      */
     data class Order(
         val search: List<String> = emptyList(),
-        val isbn: List<String> = emptyList(),
+        val isbn: IsbnOrderProperties = IsbnOrderProperties(),
     )
+
+    /** One ISBN order per [IsbnGroup]; see there for what each group is and why it has its own. */
+    data class IsbnOrderProperties(
+        /** For an ISBN in no group, and for a group without its own list. */
+        val default: List<String> = emptyList(),
+        /** For German-language ISBNs, `978-3` ([IsbnGroup.GERMAN_LANGUAGE]). Absent or empty uses [default]. */
+        val germanLanguage: List<String>? = null,
+    ) {
+        /** An empty group list means "no order of its own", like an absent one — never "sorted by id". */
+        fun toIsbnOrder() = IsbnOrder(
+            default = default.map(SourceId::of),
+            byGroup = listOfNotNull(
+                germanLanguage?.takeIf { it.isNotEmpty() }?.let { IsbnGroup.GERMAN_LANGUAGE to it.map(SourceId::of) },
+            ).toMap(),
+        )
+    }
 }
 
 data class ProviderProperties(

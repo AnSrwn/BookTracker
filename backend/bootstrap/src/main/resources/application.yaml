@@ -18,10 +18,17 @@ booktracker:
     # Open Library asks for a contact User-Agent
     user-agent: ${BOOKTRACKER_BOOKDATA_USER_AGENT:BookTracker/0.1}
     # Source ids in the order their answers are used. Google finds books, the CC0 sources
-    # describe the ones we keep (ADR-007); Google does no ISBN lookup (9.7 D7).
+    # describe the ones we keep (ADR-007); Google does no ISBN lookup (9.7 D7), DNB no search.
     order:
       search: [google_books, open_library]
-      isbn: [open_library]
+      # One ISBN order per ISBN group (IsbnGroup in adapter:bookdata)
+      isbn:
+        # DNB as the fallback: it also holds translations of German works and German-language
+        # books from foreign publishers, which carry foreign ISBNs
+        default: [open_library, dnb]
+        # 978-3, German-language ISBNs (DE, AT, CH): by legal deposit DNB receives essentially
+        # every German-language printing, so its record is the authority for these editions
+        german-language: [dnb, open_library]
     # One uniform block per provider. `enabled: false` removes it from the running application.
     open-library:
       enabled: ${BOOKTRACKER_OPEN_LIBRARY_ENABLED:true}
@@ -39,6 +46,13 @@ booktracker:
       api-key: ${BOOKTRACKER_GOOGLE_BOOKS_API_KEY:}
       # Required from servers Google cannot geolocate (403 otherwise)
       country: DE
+    dnb:
+      enabled: ${BOOKTRACKER_DNB_ENABLED:true}
+      base-url: https://services.dnb.de
+      connect-timeout: 1s
+      read-timeout: 3s
+      # Self-imposed: DNB publishes no limit, and SRU is a public institution's service
+      rate-per-second: 1
   catalog:
     # With at least this many local hits a text search does not ask the external sources
     min-local-hits: 5
