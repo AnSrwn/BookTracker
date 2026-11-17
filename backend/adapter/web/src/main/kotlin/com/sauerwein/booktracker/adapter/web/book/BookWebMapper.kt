@@ -10,7 +10,7 @@ import com.sauerwein.booktracker.core.book.usecases.CreatePrivateBookCommand
 
 fun CreatePrivateBookRequest.toCommand() = CreatePrivateBookCommand(
     title = title,
-    authors = authors.map { it.trim() },
+    authors = authors.orEmpty().map { it.trim() },
     publisher = publisher,
     isbn = isbn?.let(Isbn::of),
     publicationYear = publicationYear,

@@ -14,9 +14,13 @@ private val YEAR = Regex("""(?<!\d)\d{4}(?!\d)""")
 
 class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
 
-    fun toCandidate(edition: OpenLibraryEdition, authors: List<Author>): BookCandidate? {
+    /**
+     * [authors] as the client resolved them — from the edition, or from its work when the edition
+     * yields none ([authorsFromWork]). May be empty: a book may have no author (9.10 Q9).
+     */
+    fun toCandidate(edition: OpenLibraryEdition, authors: List<Author>, authorsFromWork: Boolean = false): BookCandidate? {
         val title = edition.title?.takeIf { it.isNotBlank() } ?: return null
-        val cleanAuthors = cleanAuthors(authors).ifEmpty { return null }
+        val cleanAuthors = cleanAuthors(authors)
         val isbn = firstValidIsbn(edition.isbn13) ?: firstValidIsbn(edition.isbn10)
 
         // `default=false` turns a missing cover into a 404 instead of a 1×1 placeholder GIF
@@ -35,8 +39,9 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
             language = edition.languages?.firstNotNullOfOrNull { ref -> ref.key?.removePrefix(LANGUAGE_KEY_PREFIX)?.let(Language::ofOrNull) },
             source = descriptor.id,
             sourceId = edition.key?.removePrefix(EDITION_KEY_PREFIX)?.takeIf { it.isNotBlank() }?.let(::SourceRecordId),
-            workKey = edition.works?.firstNotNullOfOrNull { ref -> ref.key?.let(::workIdOrNull) },
+            workKey = firstWorkIdOrNull(edition),
             persistableInPublicCatalog = descriptor.persistableInPublicCatalog,
+            authorsFromWork = authorsFromWork && cleanAuthors.isNotEmpty(),
         )
     }
 
@@ -56,7 +61,8 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
         val keys = doc.authorKey?.takeIf { it.size == names.size }
         val authors =
             names.mapIndexed { index, name -> Author(name, keys?.get(index)?.let(::authorIdOrNull)?.let(::authorRef)) }
-        val cleanAuthors = cleanAuthors(authors).ifEmpty { return null }
+        // Search authors are the work's by nature; no fallback and no rank-last flag here (9.10 I6)
+        val cleanAuthors = cleanAuthors(authors)
         val sourceId = edition?.key?.let(::editionIdOrNull)
 
         // With an edition, every edition-level field comes from it and from nothing else — the
@@ -99,9 +105,16 @@ class OpenLibraryMapper(private val descriptor: SourceDescriptor) {
 internal fun authorIdOrNull(key: String): SourceRecordId? =
     key.removePrefix(AUTHOR_KEY_PREFIX).takeIf { AUTHOR_ID.matches(it) }?.let(::SourceRecordId)
 
-/** Stored, never put into a path — but still third-party data, so only a well-formed key is kept. */
+/**
+ * Stored, and put into a path when the edition names no author (9.10 R9) — third-party data, so only
+ * a well-formed key is kept.
+ */
 internal fun workIdOrNull(key: String): SourceRecordId? =
     key.removePrefix(WORK_KEY_PREFIX).takeIf { WORK_ID.matches(it) }?.let(::SourceRecordId)
+
+/** The edition's first well-formed work key: its work, for the mapper and for the client's author fallback. */
+internal fun firstWorkIdOrNull(edition: OpenLibraryEdition): SourceRecordId? =
+    edition.works?.firstNotNullOfOrNull { ref -> ref.key?.let(::workIdOrNull) }
 
 /** Edition keys arrive as `/books/OL…M`; a record id handed back by our own app is bare. Only a well-formed one goes into a path. */
 internal fun editionIdOrNull(key: String): SourceRecordId? =

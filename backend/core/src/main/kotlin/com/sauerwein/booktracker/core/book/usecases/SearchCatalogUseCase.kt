@@ -14,9 +14,11 @@ import com.sauerwein.booktracker.core.user.CurrentUserProvider
 private const val LOCAL_SEARCH_LIMIT = 20
 
 /**
- * Local hits first. With at least [minLocalHits] of them the source is not asked at all;
- * with fewer, the source's hits are appended. Search only reads (D27): a source hit is stored
- * when a user adds it, from the full record — never as the thin record a search returns.
+ * An ISBN typed into search is resolved like a scan by [ResolveIsbnUseCase], storing included.
+ *
+ * Text: local hits first. With at least [minLocalHits] of them the source is not asked at all;
+ * with fewer, the source's hits are appended. Text search only reads (D27): a source hit is
+ * stored when a user adds it, from the full record — never as the thin record a search returns.
  *
  * Outages (9.7 D2, D4): with local hits a failing source only shortens the list; without any,
  * the failure is the answer (503), so an outage never looks like "no such book".

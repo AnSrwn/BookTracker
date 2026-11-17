@@ -26,7 +26,6 @@ class GoogleBooksMapper(private val descriptor: SourceDescriptor) {
             .filter { it.isNotEmpty() }
             .distinct()
             .map { Author(it, ref = null) }
-            .ifEmpty { return null }
 
         return BookCandidate(
             title = title,

@@ -23,6 +23,14 @@ data class OpenLibraryEdition(
 
 data class OpenLibraryKeyRef(val key: String? = null)
 
+/**
+ * A work, `/works/OL…W.json`: only its authors, read when an edition names none. Shaped unlike an
+ * edition's list: `authors: [{"author": {"key": "/authors/OL21594A"}, "type": {…}}]`.
+ */
+data class OpenLibraryWork(val authors: List<OpenLibraryWorkAuthor>? = null)
+
+data class OpenLibraryWorkAuthor(val author: OpenLibraryKeyRef? = null)
+
 data class OpenLibraryAuthor(val name: String? = null)
 
 data class OpenLibrarySearchResponse(val docs: List<OpenLibrarySearchDoc>? = null)

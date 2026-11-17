@@ -76,9 +76,10 @@ class CompositeBookMetadataSourceTest {
         coverUrl: String? = null,
         persistable: Boolean = true,
         language: Language? = null,
+        authors: List<String> = listOf("Christopher Paolini"),
     ) = BookCandidate(
         title = title,
-        authors = listOf(Author("Christopher Paolini", ref = null)),
+        authors = authors.map { Author(it, ref = null) },
         publisher = publisher,
         isbn = isbn,
         publicationYear = null,
@@ -221,6 +222,23 @@ class CompositeBookMetadataSourceTest {
         assertEquals("https://finder/c.jpg", eragon.coverUrl)
     }
 
+    /**
+     * A11: a search hit without an author is listed like any other, and takes the authors of a hit
+     * with the same ISBN when another provider has one.
+     */
+    @Test
+    fun `lists a search hit without an author, merged with another provider's authors where they share an ISBN`() {
+        val finder = FakeProvider(
+            FINDER, isbn = false,
+            hits = listOf(hit(FINDER, "Duden", isbn = ISBN, authors = emptyList()), hit(FINDER, "Tschick", isbn = OTHER_ISBN, authors = emptyList())),
+        )
+        val archive = FakeProvider(ARCHIVE, isbn = false, hits = listOf(hit(ARCHIVE, "Tschick (archive)", isbn = OTHER_ISBN, authors = listOf("Wolfgang Herrndorf"))))
+
+        val hits = composite(finder, archive, searchOrder = listOf(FINDER, ARCHIVE)).search("x")
+
+        assertEquals(listOf(emptyList(), listOf("Wolfgang Herrndorf")), hits.map { hit -> hit.authors.map { it.name } })
+    }
+
     /** Q5: without an ISBN, two hits are never assumed to be one edition. */
     @Test
     fun `never merges search hits without an ISBN`() {
@@ -299,6 +317,32 @@ class CompositeBookMetadataSourceTest {
 
         assertEquals("Eragon (archive)", found?.title)
         assertEquals(ARCHIVE, found?.source)
+    }
+
+    /** 9.10 Q9, A10: the Duden has no author anywhere — still a found book, not a miss. */
+    @Test
+    fun `a book without an author is found`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Duden", isbn = ISBN, authors = emptyList()))
+        val archive = FakeProvider(ARCHIVE)
+
+        val found = composite(library, archive).findByIsbn(ISBN)
+
+        assertEquals("Duden", found?.title)
+        assertEquals(emptyList(), found?.authors)
+    }
+
+    /** A9: a record without an author still fills the gaps of one with an author. */
+    @Test
+    fun `a record without an author contributes its other fields`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Harry Potter", isbn = ISBN))
+        val archive = FakeProvider(
+            ARCHIVE, isbnHit = hit(ARCHIVE, "Harry Potter (archive)", isbn = ISBN, coverUrl = "https://archive/c.jpg", authors = emptyList()),
+        )
+
+        val found = composite(library, archive).findByIsbn(ISBN)
+
+        assertEquals(listOf("Christopher Paolini"), found?.authors?.map { it.name })
+        assertEquals("https://archive/c.jpg", found?.coverUrl)
     }
 
     /** The scanned ISBN is the row's ISBN, whichever form a provider reports. */
