@@ -230,10 +230,12 @@ backend/
 │  ├─ CompositeBookMetadataSource.kt          # Fan-out by descriptor, outage vs. miss, never names a source
 │  ├─ BookDataConfig.kt                       # The one BookMetadataSource bean (the composite)
 │  ├─ BookDataProperties.kt                   # One uniform block per provider, search/ISBN order
+│  ├─ IsbnGroup.kt                            # ISBN groups with their own lookup order (978-3 German-language)
 │  ├─ BookSourceRegistration.kt               # How a provider joins the composite
+│  ├─ ThrottledRestClient.kt                  # RestClient with the per-second limiter on the wire
 │  ├─ BookCandidateMerge.kt                   # (9.9) First non-null over the configured order
 │  ├─ googlebooks/GoogleBooksClient.kt        # Search only; + DTOs, mapper, DailyQuotaGuard, config
-│  ├─ dnb/DnbSruClient.kt                     # (9.8) MARC21-XML, hand-rolled field extraction
+│  ├─ dnb/DnbSruClient.kt                     # ISBN lookup only; + hardened MARC21-XML parser, mapper, config
 │  ├─ openlibrary/OpenLibraryClient.kt        # + DTOs, mapper, config
 │  └─ resilience/                             # Circuit breaker + metrics wrapper, rate limiter, exceptions
 ├─ adapter/security/src/main/kotlin/com/sauerwein/booktracker/adapter/security/
@@ -348,7 +350,8 @@ Correction (2026-11-16): this paragraph originally said Google had no record for
 That matters because a barcode scan yields the ISBN of **one specific printing**. The consequences:
 
 - Fan-out across sources on ISBN lookup is not a nicety, it is how a hit happens at all. A single-source lookup fails often.
-- **DNB goes first for German ISBNs**, because legal deposit means it receives essentially every German printing, while a commercial index carries what it has digitised or been fed. That is the real argument — not a coverage deficiency elsewhere.
+- **DNB goes first for German-language ISBNs (`978-3`, Germany, Austria and Switzerland)**, because legal deposit means it receives essentially every German-language printing, while a commercial index carries what it has digitised or been fed. That is the real argument — not a coverage deficiency elsewhere.
+- **For every other ISBN DNB is the fallback**, asked after Open Library. It is not only German: it collects translations of German works, German-language books from foreign publishers, and more — on 2026-11-17 it had the Slovak *Tschick* (`9788082035097`) and even *Code Complete* (`9780735619678`). Cost: one request, and only when Open Library missed or failed. Until 9.9 merges fields, the ISBN group stands in for the language: `order.isbn` is keyed by group (`IsbnGroup`), and the composite picks the list without naming a source (9.8 Q1, Q5).
 - Reverse the order for free-text search: Google first, DNB not at all.
 
 **Google is a search-only provider, and stays one.** Its descriptor declares `supportsIsbnLookup = false` and the scan flow never calls it — which also means the most important path in the MVP consumes none of the 1,000/day budget. This started as a workaround for a Google outage, which has since been fixed; it is now a decision (9.7 D7): Google only helps find a book, and its data is never stored, not even in a private book (D6), so a Google lookup could not even pre-fill a form.
@@ -392,12 +395,15 @@ No condition on "did DNB have it" is needed: a provider that returns no record c
 booktracker.bookdata:
   order:                       # until 9.9 merges fields: whose hits come first, who is asked first
     search: [google_books, open_library]
-    isbn:   [open_library]     # dnb joins in 9.8
+    isbn:                      # one list per ISBN group (IsbnGroup)
+      default:         [open_library, dnb]   # DNB as the fallback
+      german-language: [dnb, open_library]   # 978-3: DNB is the authority (legal deposit)
   open-library: { enabled: true, base-url: https://openlibrary.org, rate-per-second: 1, read-timeout: 3s }
   google-books: { enabled: true, base-url: https://www.googleapis.com, api-key: …, country: DE }
+  dnb:          { enabled: true, base-url: https://services.dnb.de, rate-per-second: 1, read-timeout: 3s }
 ```
 
-The field-precedence lists (`dnb → google_books → open_library` per field, keyed by language) arrive with the merge in 9.9.
+A group without its own list uses `default`. The order differs per group; which providers are asked never does. The field-precedence lists (`dnb → google_books → open_library` per field, keyed by language) arrive with the merge in 9.9.
 
 3. **Wiring is a list of beans.** Each provider's config registers a `BookSourceRegistration`, and the composite collects them — so the composite is the only `BookMetadataSource` bean, with no `@Primary` and no risk of injecting itself. `@ConditionalOnProperty` on each provider config makes `enabled: false` a real removal. That matters operationally, not just architecturally: a provider returning garbage can be switched off in production without a deploy. Naming the Resilience4j instances and Micrometer tags after the provider id means limits, circuit breakers and metrics come for free with the block rather than being wired per provider.
 
@@ -466,7 +472,16 @@ Removing a provider is therefore `enabled: false`, deleting its package, and dro
 - `300$a` is `733 S.` and `264$c` is `[2014]` — both need unwrapping to numbers.
 - `100$a` is inverted (`Paolini, Christopher`); flip for display. The `$0` GND id comes along free and is useful for author pages later.
 - DNB carries **no cover images**.
-- `maximumRecords` defaults to **10** and caps at **100** per response; `startRecord` paginates to roughly 99,000. Set it to what will actually be displayed — requesting 100 records to render 10 is pure waste on a public institution's service, and deep pagination is the signal that the job belongs on OAI-PMH instead.
+- `maximumRecords` defaults to **10** and caps at **100** per response; `startRecord` paginates to roughly 99,000. Set it to what will actually be displayed — requesting 100 records to render 10 is pure waste on a public institution's service, and deep pagination is the signal that the job belongs on OAI-PMH instead. An ISBN lookup asks for 5.
+
+Found while building the client (9.8, 2026-11-17):
+
+- `245$n` can be **`[...]`**, DNB's placeholder for "part number unknown" — not part of the title. The Eragon record has it. The title is `$a $n – $p` with `[...]` dropped (*Eragon – Das Vermächtnis der Drachenreiter*, with a number *Eragon 1 – …*). Newer records put the whole title, part number included, into `$a` alone.
+- **Umlauts arrive decomposed (NFD**, `a` + U+0308). Composed to NFC before storing, or a stored *Vermächtnis* never equals the same word typed by a user.
+- Non-sorting markers appear in names too (`Jascheroff, Constantin \x98von\x9c`), not only in titles.
+- **Print vs non-print is in the coded fields**: leader/06 `a` is text, `i` audio; `007` starting `c` and `338$b cr` mean online. `300$a` alone is not enough, and "requires `338 nc`" would drop real books — many foreign print records have no `337`/`338`.
+- `100`/`700` carry the role in `$4`: `aut` author, `trl` translator, `nrt` narrator, `ctb` contributor. Some records have no author at all (an audio play with only contributors, a translation catalogued without one); they yield no candidate.
+- A query DNB rejects still answers **`200`**, with the reason in `<diagnostics>`; a miss is `200` with `numberOfRecords 0`.
 
 **Open Library's `/isbn/{isbn}.json` returns an HTML error page on a miss, not JSON.** Branch on the status code; never parse the body blind.
 

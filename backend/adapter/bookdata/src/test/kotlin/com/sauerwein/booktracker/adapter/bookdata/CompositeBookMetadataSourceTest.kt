@@ -81,7 +81,8 @@ class CompositeBookMetadataSourceTest {
         vararg providers: FakeProvider,
         searchOrder: List<SourceId> = emptyList(),
         isbnOrder: List<SourceId> = emptyList(),
-    ) = CompositeBookMetadataSource(providers.toList(), searchOrder, isbnOrder)
+        isbnOrderByGroup: Map<IsbnGroup, List<SourceId>> = emptyMap(),
+    ) = CompositeBookMetadataSource(providers.toList(), searchOrder, IsbnOrder(isbnOrder, isbnOrderByGroup))
 
     // Order and capabilities
 
@@ -240,7 +241,7 @@ class CompositeBookMetadataSourceTest {
     @Test
     fun `asks no further provider once the request is interrupted`() {
         val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
-        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(FINDER), library), listOf(FINDER, LIBRARY), emptyList())
+        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(FINDER), library), listOf(FINDER, LIBRARY), IsbnOrder(emptyList()))
 
         onInterruptibleThread {
             val e = assertFailsWith<SourceUnavailableException> { composite.search("eragon") }
@@ -254,7 +255,7 @@ class CompositeBookMetadataSourceTest {
     @Test
     fun `keeps the hits found before the interrupt`() {
         val library = FakeProvider(LIBRARY, hits = listOf(hit(LIBRARY, "Eragon")))
-        val composite = CompositeBookMetadataSource(listOf(library, interruptedProvider(FINDER), FakeProvider(ARCHIVE)), listOf(LIBRARY, FINDER, ARCHIVE), emptyList())
+        val composite = CompositeBookMetadataSource(listOf(library, interruptedProvider(FINDER), FakeProvider(ARCHIVE)), listOf(LIBRARY, FINDER, ARCHIVE), IsbnOrder(emptyList()))
 
         val titles = onInterruptibleThread { composite.search("eragon").map { it.title } }
 
@@ -264,7 +265,7 @@ class CompositeBookMetadataSourceTest {
     @Test
     fun `asks no further ISBN provider once the request is interrupted`() {
         val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon"))
-        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(LIBRARY), archive), emptyList(), listOf(LIBRARY, ARCHIVE))
+        val composite = CompositeBookMetadataSource(listOf(interruptedProvider(LIBRARY), archive), emptyList(), IsbnOrder(listOf(LIBRARY, ARCHIVE)))
 
         onInterruptibleThread { assertFailsWith<SourceUnavailableException> { composite.findByIsbn(ISBN) } }
         assertTrue(archive.calls.isEmpty())
@@ -328,6 +329,68 @@ class CompositeBookMetadataSourceTest {
         assertNull(composite(FakeProvider(LIBRARY), FakeProvider(ARCHIVE)).findByIsbn(ISBN))
     }
 
+    // ISBN order by group (9.8 Q1, Q5)
+
+    private val germanLanguageIsbn = ISBN // 978-3…
+    private val englishIsbn = Isbn.of("9780735619678")
+
+    private fun keyed(vararg providers: FakeProvider) = composite(
+        *providers,
+        isbnOrder = listOf(LIBRARY, ARCHIVE),
+        isbnOrderByGroup = mapOf(IsbnGroup.GERMAN_LANGUAGE to listOf(ARCHIVE, LIBRARY)),
+    )
+
+    /** E12: the group's own order — the second provider is not asked once the first knows the ISBN. */
+    @Test
+    fun `asks in the group's order for an ISBN of that group`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon (library)"))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)"))
+
+        assertEquals("Eragon (archive)", keyed(library, archive).findByIsbn(germanLanguageIsbn)?.title)
+        assertTrue(library.calls.isEmpty())
+    }
+
+    /** E11, E15: an ISBN in no group uses the default order. */
+    @Test
+    fun `asks in the default order for an ISBN in no group`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Code Complete (library)"))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Code Complete (archive)"))
+
+        assertEquals("Code Complete (library)", keyed(library, archive).findByIsbn(englishIsbn)?.title)
+        assertTrue(archive.calls.isEmpty())
+    }
+
+    /** E14: the provider listed last is the fallback, asked only after the first one missed. */
+    @Test
+    fun `asks the provider listed last when the first one misses`() {
+        val library = FakeProvider(LIBRARY)
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Cik"))
+
+        assertEquals("Cik", keyed(library, archive).findByIsbn(englishIsbn)?.title)
+        assertEquals(listOf("isbn"), library.calls)
+    }
+
+    @Test
+    fun `uses the default order for a group without its own`() {
+        val library = FakeProvider(LIBRARY, isbnHit = hit(LIBRARY, "Eragon (library)"))
+        val archive = FakeProvider(ARCHIVE, isbnHit = hit(ARCHIVE, "Eragon (archive)"))
+
+        val found = composite(library, archive, isbnOrder = listOf(LIBRARY, ARCHIVE)).findByIsbn(germanLanguageIsbn)
+
+        assertEquals("Eragon (library)", found?.title)
+    }
+
+    @Test
+    fun `the order differs per group, the providers do not`() {
+        val composite = keyed(FakeProvider(LIBRARY), FakeProvider(ARCHIVE), FakeProvider(FINDER, isbn = false))
+
+        assertEquals(listOf(LIBRARY, ARCHIVE), composite.isbnProviders.map { it.descriptor.id })
+        assertEquals(
+            listOf(ARCHIVE, LIBRARY),
+            composite.isbnProvidersByGroup.getValue(IsbnGroup.GERMAN_LANGUAGE).map { it.descriptor.id },
+        )
+    }
+
     // Configuration
 
     /** A disabled provider may stay listed; a misspelled one is only found by this warning. */
@@ -365,7 +428,7 @@ class CompositeBookMetadataSourceTest {
         val failing = object : BookMetadataSource by FakeProvider(LIBRARY) {
             override fun findByRecordId(ref: SourceRef): BookCandidate? = throw down(LIBRARY)
         }
-        val composite = CompositeBookMetadataSource(listOf(failing), emptyList(), emptyList())
+        val composite = CompositeBookMetadataSource(listOf(failing), emptyList(), IsbnOrder(emptyList()))
 
         val e = assertFailsWith<SourceUnavailableException> { composite.findByRecordId(SourceRef(LIBRARY, SourceRecordId("x"))) }
         assertEquals(LIBRARY, e.source)

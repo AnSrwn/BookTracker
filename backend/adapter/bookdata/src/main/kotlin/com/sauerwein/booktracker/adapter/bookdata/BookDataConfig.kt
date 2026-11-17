@@ -22,20 +22,28 @@ class BookDataConfig {
     ): BookMetadataSource {
         val sources = registrations.orderedStream().map { it.source }.toList()
         val searchOrder = properties.order.search.map(SourceId::of)
-        val isbnOrder = properties.order.isbn.map(SourceId::of)
+        val isbnOrder = properties.order.isbn.toIsbnOrder()
         val composite = CompositeBookMetadataSource(sources = sources, searchOrder = searchOrder, isbnOrder = isbnOrder)
 
-        mapOf("search" to searchOrder, "isbn" to isbnOrder).forEach { (list, order) ->
+        val orders =
+            mapOf("search" to searchOrder) + isbnOrder.all.mapKeys { (name, _) -> "isbn.${name.replace('_', '-')}" }
+        orders.forEach { (list, order) ->
             val unmatched = CompositeBookMetadataSource.unmatchedOrderIds(order, sources)
             if (unmatched.isNotEmpty()) {
-                log.warn("booktracker.bookdata.order.{} lists {}, which matches no running source (disabled or misspelled)", list, unmatched)
+                log.warn(
+                    "booktracker.bookdata.order.{} lists {}, which matches no running source (disabled or misspelled)",
+                    list,
+                    unmatched
+                )
             }
         }
 
+        val isbnLookup = mapOf(IsbnOrder.DEFAULT_NAME to composite.isbnProviders) +
+                composite.isbnProvidersByGroup.mapKeys { (group, _) -> group.name.lowercase() }
         log.info(
             "Book sources: search {}, ISBN lookup {}",
             composite.searchProviders.map { it.descriptor.id },
-            composite.isbnProviders.map { it.descriptor.id },
+            isbnLookup.entries.joinToString { (name, providers) -> "$name ${providers.map { it.descriptor.id }}" },
         )
         if (composite.searchProviders.isEmpty() && composite.isbnProviders.isEmpty()) {
             log.warn("No book source is enabled: search and scan answer from the catalog only")
