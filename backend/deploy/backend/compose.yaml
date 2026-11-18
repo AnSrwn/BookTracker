@@ -1,0 +1,68 @@
+# One backend environment (dev or prod): the app and its own Postgres.
+# Deployed as a Portainer stack. The deploy workflow sends this file and sets IMAGE_TAG;
+# every other variable is a stack variable kept in Portainer (names: stack.env.example).
+# See docs/deployment.md.
+
+services:
+  app:
+    image: ghcr.io/ansrwn/booktracker-backend:${IMAGE_TAG:?IMAGE_TAG must be set}
+    # Unique across stacks: the reverse proxy reaches the app by this name on the shared network
+    container_name: booktracker-${BOOKTRACKER_ENV:?BOOKTRACKER_ENV must be set}-app
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DATABASE:?DATABASE must be set}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:?DB_USERNAME must be set}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      # TLS ends at the reverse proxy: without this, Location headers and Swagger UI use http://
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      # Public realm URL, checked against the token's issuer. Changing it invalidates every issued token.
+      BOOKTRACKER_ISSUER_URI: ${BOOKTRACKER_ISSUER_URI:?BOOKTRACKER_ISSUER_URI must be set}
+      # Signing keys fetched inside Docker instead of through the public host name, e.g.
+      # http://booktracker-keycloak:8080/realms/<realm>/protocol/openid-connect/certs. The issuer check above stays.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${BOOKTRACKER_JWK_SET_URI:?BOOKTRACKER_JWK_SET_URI must be set}
+      BOOKTRACKER_BOOKDATA_USER_AGENT: ${BOOKTRACKER_BOOKDATA_USER_AGENT:?BOOKTRACKER_BOOKDATA_USER_AGENT must be set}
+      # Required: without it every restart signs search hit ids differently.
+      BOOKTRACKER_CATALOG_HIT_ID_SECRET: ${BOOKTRACKER_CATALOG_HIT_ID_SECRET:?BOOKTRACKER_CATALOG_HIT_ID_SECRET must be set}
+      # Passed through, not required here: with Google enabled and no key the app refuses to start
+      # with a clear message, and BOOKTRACKER_GOOGLE_BOOKS_ENABLED=false must still work without one.
+      BOOKTRACKER_GOOGLE_BOOKS_ENABLED: ${BOOKTRACKER_GOOGLE_BOOKS_ENABLED:-true}
+      BOOKTRACKER_GOOGLE_BOOKS_API_KEY: ${BOOKTRACKER_GOOGLE_BOOKS_API_KEY:-}
+      # Extra password in front of Swagger UI and /v3/api-docs. Required on a public server.
+      BOOKTRACKER_API_DOCS_USERNAME: ${BOOKTRACKER_API_DOCS_USERNAME:?BOOKTRACKER_API_DOCS_USERNAME must be set}
+      BOOKTRACKER_API_DOCS_PASSWORD: ${BOOKTRACKER_API_DOCS_PASSWORD:?BOOKTRACKER_API_DOCS_PASSWORD must be set}
+    networks:
+      - default
+      - proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # The buildpack's JVM memory calculator sizes the heap from this limit, not from the host
+    mem_limit: 1g
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${DATABASE:?DATABASE must be set}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME must be set}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Only on the stack's own network: never reachable from the proxy or another stack
+    networks:
+      - default
+    mem_limit: 512m
+    restart: unless-stopped
+
+networks:
+  # Shared with the reverse proxy and Keycloak, created once by hand
+  proxy:
+    name: booktracker-proxy
+    external: true
+
+volumes:
+  postgres-data:

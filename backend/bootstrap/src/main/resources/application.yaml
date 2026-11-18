@@ -74,12 +74,18 @@ booktracker:
     # Signs the ids of search hits not stored yet (D28). At least 32 bytes. Empty in dev: a random
     # per-process secret is used and hit ids die with a restart. Required in production.
     hit-id-secret: ${BOOKTRACKER_CATALOG_HIT_ID_SECRET:}
+  # Extra password in front of Swagger UI and /v3/api-docs. Empty password (the local default): open.
+  # Required on a public server (deploy/backend/compose.yaml)
+  api-docs:
+    username: ${BOOKTRACKER_API_DOCS_USERNAME:}
+    password: ${BOOKTRACKER_API_DOCS_PASSWORD:}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health, metrics
+        # info shows the build's version and commit (public, used by the deploy workflow)
+        include: health, info, metrics
 
 springdoc:
   swagger-ui:

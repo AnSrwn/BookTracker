@@ -21,3 +21,7 @@ Postgres starts automatically from `compose.yaml`.
 - API: http://localhost:8080/api/v1
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - OpenAPI spec: http://localhost:8080/v3/api-docs
+
+## Deploy
+
+A push to `main` deploys to dev, a tag `v<major>.<minor>.<patch>` on `main` deploys to prod. Details in [docs/deployment.md](docs/deployment.md).
