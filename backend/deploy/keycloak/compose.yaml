@@ -19,9 +19,10 @@ services:
       # TLS ends at the reverse proxy, which sends X-Forwarded-* headers
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
-      # Only for the first start: replace with a real admin, then delete this one (docs/deployment.md)
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-}
+      # No bootstrap admin here: Keycloak refuses to start when KC_BOOTSTRAP_ADMIN_USERNAME is set,
+      # even to an empty value, without a password. For the very first start (or to recover access),
+      # add KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD in Portainer's editor by hand.
+      # The next deploy from the workflow removes them again (docs/deployment.md).
       # Filled into the realm files on import (Swagger UI redirect and web origin per environment)
       BOOKTRACKER_DEV_API_URL: ${BOOKTRACKER_DEV_API_URL:?BOOKTRACKER_DEV_API_URL must be set}
       BOOKTRACKER_PROD_API_URL: ${BOOKTRACKER_PROD_API_URL:?BOOKTRACKER_PROD_API_URL must be set}
