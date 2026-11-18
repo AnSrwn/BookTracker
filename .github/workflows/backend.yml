@@ -109,7 +109,8 @@ jobs:
 
   deploy-dev:
     needs: image
-    if: github.ref == 'refs/heads/main'
+    # Skipped until the stack exists and its id is set (first setup, docs/deployment.md)
+    if: github.ref == 'refs/heads/main' && vars.DEV_STACK_ID != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -130,7 +131,8 @@ jobs:
 
   deploy-prod:
     needs: image
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Skipped until the stack exists and its id is set (first setup, docs/deployment.md)
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PROD_STACK_ID != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read

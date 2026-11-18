@@ -93,22 +93,22 @@ Filled-in copies of the `*.env` files are ignored by git. Images are pushed with
 
 ## One-time setup
 
-The order matters, because each step needs the one before it.
+The order matters, because each step needs the one before it. The deploy jobs skip themselves while their stack id variable is not set, so the workflows can be merged before the stacks exist. The merge builds the first images.
 
-1. **DNS:** one record per host name, pointing at the server.
+1. **DNS:** one record per host name, pointing at the server. With Cloudflare, use "DNS only": its free certificate covers one subdomain level only, and the reverse proxy gets its own certificates.
 2. **Portainer:**
    - Create the network `booktracker-proxy` and connect the reverse proxy's container to it.
    - Add the GHCR registry.
    - Create a deploy user and its access token.
-3. **Keycloak stack:**
-   - Run the Keycloak workflow once to get an image.
-   - Create the stack from `deploy/keycloak/compose.yaml` with its variables.
+3. **Merge the workflows into `main`.** This builds the backend and Keycloak images. The deploys are skipped.
+4. **Keycloak stack:**
+   - Create the stack from `deploy/keycloak/compose.yaml` with its variables, `IMAGE_TAG` set to the Keycloak image built in step 3.
    - Give the deploy user access to it.
-4. **Reverse proxy:** one proxy host per host name with a TLS certificate, and the extra password on the auth host's `/admin/` and `/realms/master/`.
-5. **Keycloak:** a personal admin with two-factor login, remove the bootstrap admin, create the first users.
-6. **Backend stacks:** create `booktracker-dev` and `booktracker-prod` from `deploy/backend/compose.yaml`, each with its own variables, and give the deploy user access.
-7. **GitHub:** the secret and variables from the table above.
-8. **First deploys:** merge to `main` (dev), then push the first tag (prod).
+5. **Reverse proxy:** one proxy host per host name with a TLS certificate, and the extra password on the auth host's `/admin/` and `/realms/master/`.
+6. **Keycloak:** a personal admin with two-factor login, remove the bootstrap admin, create the first users.
+7. **Backend stacks:** create `booktracker-dev` and `booktracker-prod` from `deploy/backend/compose.yaml`, each with its own variables (`IMAGE_TAG`: the backend image from step 3), and give the deploy user access.
+8. **GitHub:** the secret and variables from the table above.
+9. **First deploys:** the next push to `main` deploys dev, and the first tag deploys prod.
 
 ## Day to day
 
