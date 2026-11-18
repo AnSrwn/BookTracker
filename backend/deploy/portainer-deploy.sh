@@ -63,8 +63,35 @@ status=$(curl --silent --show-error --max-time 600 \
   "$portainer/api/stacks/$stack_id?endpointId=$PORTAINER_ENDPOINT_ID")
 [[ $status == 200 ]] || fail_with "Updating stack $stack_id" "$status" "$work/response.json"
 
-# The new container needs a while to start; Flyway migrates the database on the way
 timeout=${DEPLOY_TIMEOUT_SECONDS:-300}
+deadline=$((SECONDS + timeout))
+
+# Since Portainer 2.45 the update only starts the deployment and answers at once; the outcome lands
+# on the stack later (Status 3 deploying, 1 active, 4 error, with a message in DeploymentStatus).
+echo "Waiting for Portainer to finish the deployment"
+while true; do
+  status=$(curl --silent --show-error --max-time 30 \
+    --output "$work/stack.json" --write-out '%{http_code}' \
+    --header "X-API-Key: $PORTAINER_TOKEN" \
+    "$portainer/api/stacks/$stack_id")
+  [[ $status == 200 ]] || fail_with "Reading stack $stack_id" "$status" "$work/stack.json"
+  stack_status=$(jq -r '.Status' "$work/stack.json")
+  case $stack_status in
+    1) echo "Portainer deployed the stack"; break ;;
+    4)
+      message=$(jq -r '[.DeploymentStatus[]? | select(.Message != null and .Message != "") | .Message] | last // "no message"' "$work/stack.json")
+      echo "::error::Portainer failed to deploy stack $stack_id: $message" >&2
+      exit 1
+      ;;
+  esac
+  if ((SECONDS >= deadline)); then
+    echo "::error::Portainer was still deploying stack $stack_id after $timeout seconds (status $stack_status)" >&2
+    exit 1
+  fi
+  sleep 5
+done
+
+# The new container needs a while to start; Flyway migrates the database on the way
 deadline=$((SECONDS + timeout))
 case $mode in
   backend)
