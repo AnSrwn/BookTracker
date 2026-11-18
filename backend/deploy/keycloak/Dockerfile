@@ -1,6 +1,6 @@
 # Keycloak for the deployed environments: one server, one realm per environment.
 # `kc.sh build` bakes the build-time options in, so the container starts with `start --optimized`.
-FROM quay.io/keycloak/keycloak:26.7
+FROM quay.io/keycloak/keycloak:26.7.5
 
 ENV KC_DB=postgres
 ENV KC_HEALTH_ENABLED=true

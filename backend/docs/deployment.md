@@ -58,6 +58,8 @@ flowchart LR
 
 Two deploys to the same environment never run at the same time (`concurrency` per environment).
 
+**Every version is pinned**, never `latest` or a bare major tag: the GitHub actions (`@v5.1.0`), the runner (`ubuntu-24.04`), the buildpack builder (`bootstrap/build.gradle.kts`), and the Keycloak and Postgres images. The same commit then always builds and runs on the same base. Updates are deliberate: raise the version in one place, open a pull request, and let it deploy to dev first.
+
 Keycloak has its own workflow (`.github/workflows/keycloak.yml`). Changes on `main` only build and push its image. Deploying it takes a manual **Run workflow** on `main`, because one Keycloak serves both environments.
 
 ## Keycloak

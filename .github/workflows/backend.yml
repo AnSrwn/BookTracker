@@ -16,19 +16,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v5.1.0
+      - uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4.4.4
         with:
           build-root-directory: backend
       - name: Compile
@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: test-reports
           path: backend/**/build/reports/tests/
@@ -48,7 +48,7 @@ jobs:
   image:
     needs: build
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -58,7 +58,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
         with:
           # The tag check below needs main's history
           fetch-depth: 0
@@ -83,15 +83,15 @@ jobs:
             echo "gradle_args=" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4.4.4
         with:
           build-root-directory: backend
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -111,14 +111,14 @@ jobs:
     needs: image
     # Skipped until the stack exists and its id is set (first setup, docs/deployment.md)
     if: github.ref == 'refs/heads/main' && vars.DEV_STACK_ID != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     concurrency:
       group: deploy-dev
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
       - name: Deploy to dev
         env:
           PORTAINER_URL: ${{ vars.PORTAINER_URL }}
@@ -133,14 +133,14 @@ jobs:
     needs: image
     # Skipped until the stack exists and its id is set (first setup, docs/deployment.md)
     if: startsWith(github.ref, 'refs/tags/v') && vars.PROD_STACK_ID != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     concurrency:
       group: deploy-prod
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5.1.0
       - name: Deploy to prod
         env:
           PORTAINER_URL: ${{ vars.PORTAINER_URL }}
