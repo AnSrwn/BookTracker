@@ -2,7 +2,7 @@ name: booktracker-dev
 
 services:
   postgres:
-    image: postgres:18
+    image: postgres:18.7
     environment:
       POSTGRES_DB: booktracker_db
       POSTGRES_USER: booktracker_user
@@ -13,7 +13,7 @@ services:
       - postgres-data:/var/lib/postgresql
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7
+    image: quay.io/keycloak/keycloak:26.7.5
     # start-dev keeps everything in an in-memory/file H2 store: fine locally, never for prod.
     # --import-realm reads every *.json from /opt/keycloak/data/import on first start.
     command: [ "start-dev", "--import-realm" ]

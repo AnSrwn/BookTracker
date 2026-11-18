@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:18
+    image: postgres:18.7
     environment:
       POSTGRES_DB: ${DATABASE:?DATABASE must be set}
       POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME must be set}
