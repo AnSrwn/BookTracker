@@ -26,6 +26,7 @@ The BookTracker backend is a classic CRUD backend for the **BookTracker mobile a
 | API docs | springdoc-openapi (OpenAPI 3, Swagger UI) |
 | Tests | JUnit 5, kotlin-test — unit tests only |
 | Local infrastructure | Docker Compose (`spring-boot-docker-compose`) |
+| Deployment | Container image from Spring Boot's buildpack support, GitHub Actions, Portainer stacks for dev and prod ([deployment.md](deployment.md)) |
 
 ## 2. System Context
 
@@ -250,8 +251,11 @@ backend/
 │  │  └─ config/UseCaseConfig.kt              # @Bean per use case, Clock bean
 │  └─ main/resources/application.yaml
 ├─ compose.yaml                               # Local dev: Postgres + Keycloak
-├─ compose.prod.yaml                          # Production: app + Postgres (Keycloak runs separately)
-└─ keycloak/realm-booktracker.json            # Realm import for local development
+├─ keycloak/realm-booktracker.json            # Realm import for local development (with test users)
+└─ deploy/                                    # Server deployment, see docs/deployment.md
+   ├─ backend/compose.yaml                    # One environment: app + Postgres (dev and prod)
+   ├─ keycloak/                               # Keycloak image, its compose file, realm files without users
+   └─ portainer-deploy.sh                     # Used by the workflows: update a stack, wait for the new version
 ```
 
 Wiring a use case in `bootstrap`:
@@ -290,8 +294,9 @@ Once they exist, `CurrentUserProvider` and `TransactionRunner` are passed in the
 
 ### Security
 - Stateless, no session, CSRF disabled (pure token API).
-- Public: `/v3/api-docs/**`, `/swagger-ui/**`, `/actuator/health/**`. Everything else requires a valid JWT — including `/actuator/metrics`. Only `health` and `metrics` are exposed.
-- `issuer-uri`: `http://localhost:8180/realms/booktracker` (local), overridable via `BOOKTRACKER_ISSUER_URI`. JWKS keys are loaded lazily on the first token and cached.
+- Public: `/actuator/health/**` and `/actuator/info` (version and commit, which the deploy workflow waits for). Everything else requires a valid JWT — including `/actuator/metrics`. Only `health`, `info` and `metrics` are exposed.
+- Swagger UI and `/v3/api-docs` have their own filter chain: open when `booktracker.api-docs.password` is empty (local), HTTP Basic against that one user otherwise (deployed environments). That password only opens the pages; API calls still need a token.
+- `issuer-uri`: `http://localhost:8180/realms/booktracker` (local), overridable via `BOOKTRACKER_ISSUER_URI`. JWKS keys are loaded lazily on the first token and cached. Deployed, the keys come from Keycloak inside Docker (`jwk-set-uri`), while the issuer is still checked against the public URL.
 - The issuer URL must be a **stable DNS name** per environment. It is part of every token (`iss`), of the client's redirect URIs and of the Swagger UI configuration, so changing it later invalidates all issued tokens.
 - Roles: Keycloak claim `realm_access.roles` → Spring authorities `ROLE_<name>`.
 - Keycloak client `booktracker-app`: public client, standard flow + PKCE (S256), redirect URI via app scheme.
@@ -766,6 +771,8 @@ What only a real database or HTTP exchange can show — SQL, migrations, constra
 
 `./gradlew :bootstrap:bootRun` automatically starts the services from `compose.yaml` via `spring-boot-docker-compose`.
 
+The deployed environments are described in [deployment.md](deployment.md).
+
 ## 10. Next Steps
 
 Detailed implementation plan with checklists: `docs/roadmap.md` (local only, not versioned)
@@ -777,3 +784,4 @@ Detailed implementation plan with checklists: `docs/roadmap.md` (local only, not
 5. ✅ Auth with Keycloak (`:adapter:security`, realm import, Swagger UI OAuth2)
 6. External book data: port `BookMetadataSource`, module `:adapter:bookdata`, `/api/v1/catalog`, provenance migration (ADR-007)
 7. Optional: architecture tests (e.g. Konsist) for rules within a module
+8. Deployment of dev and prod ([deployment.md](deployment.md))

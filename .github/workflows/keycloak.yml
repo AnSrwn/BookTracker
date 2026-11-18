@@ -1,0 +1,62 @@
+name: Keycloak
+
+# Push to main that changes the Keycloak image: build and push it, no deploy.
+# "Run workflow" on main: build, push and deploy it.
+# One Keycloak serves dev and prod, so it is never deployed automatically. See backend/docs/deployment.md.
+
+on:
+  push:
+    branches: [main]
+    paths: ['backend/deploy/keycloak/**', '.github/workflows/keycloak.yml']
+  pull_request:
+    paths: ['backend/deploy/keycloak/**', '.github/workflows/keycloak.yml']
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Choose image tag
+        id: tag
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: docker build --tag "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/booktracker-keycloak:${{ steps.tag.outputs.tag }}" backend/deploy/keycloak
+
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        run: docker push "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/booktracker-keycloak:${{ steps.tag.outputs.tag }}"
+
+  deploy:
+    needs: image
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-keycloak
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - name: Deploy Keycloak
+        env:
+          PORTAINER_URL: ${{ vars.PORTAINER_URL }}
+          PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+          PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+        run: >-
+          backend/deploy/portainer-deploy.sh keycloak
+          "${{ vars.KEYCLOAK_STACK_ID }}" backend/deploy/keycloak/compose.yaml
+          "${{ needs.image.outputs.tag }}" "${{ vars.AUTH_URL }}" booktracker

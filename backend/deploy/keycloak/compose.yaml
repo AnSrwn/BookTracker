@@ -1,0 +1,63 @@
+# Keycloak for all deployed environments, with its own Postgres. Holds every account:
+# losing its database orphans every user's books (no foreign key on owner_id).
+# Deployed as a Portainer stack. The deploy workflow sends this file and sets IMAGE_TAG;
+# every other variable is a stack variable kept in Portainer (names: stack.env.example).
+# See docs/deployment.md.
+
+services:
+  keycloak:
+    image: ghcr.io/ansrwn/booktracker-keycloak:${IMAGE_TAG:?IMAGE_TAG must be set}
+    # --import-realm creates the realms from the image on the first start and skips existing ones
+    command: [ "start", "--optimized", "--import-realm" ]
+    container_name: booktracker-keycloak
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DATABASE:?KC_DATABASE must be set}
+      KC_DB_USERNAME: ${KC_DB_USERNAME:?KC_DB_USERNAME must be set}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?KC_DB_PASSWORD must be set}
+      # Public URL, e.g. https://auth.<domain>. Part of every token's issuer: never change it once users exist.
+      KC_HOSTNAME: ${KC_HOSTNAME:?KC_HOSTNAME must be set}
+      # TLS ends at the reverse proxy, which sends X-Forwarded-* headers
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      # Only for the first start: replace with a real admin, then delete this one (docs/deployment.md)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Filled into the realm files on import (Swagger UI redirect and web origin per environment)
+      BOOKTRACKER_DEV_API_URL: ${BOOKTRACKER_DEV_API_URL:?BOOKTRACKER_DEV_API_URL must be set}
+      BOOKTRACKER_PROD_API_URL: ${BOOKTRACKER_PROD_API_URL:?BOOKTRACKER_PROD_API_URL must be set}
+    networks:
+      - default
+      - proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Keycloak sizes its heap as a share of this limit
+    mem_limit: 1g
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${KC_DATABASE:?KC_DATABASE must be set}
+      POSTGRES_USER: ${KC_DB_USERNAME:?KC_DB_USERNAME must be set}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?KC_DB_PASSWORD must be set}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - default
+    mem_limit: 512m
+    restart: unless-stopped
+
+networks:
+  # Shared with the reverse proxy and the backends, created once by hand
+  proxy:
+    name: booktracker-proxy
+    external: true
+
+volumes:
+  postgres-data:

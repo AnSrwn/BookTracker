@@ -50,7 +50,7 @@ class UseCaseConfig {
     /**
      * Signs the ids of search hits not stored yet (D28). Without a configured secret, dev gets a
      * random one per process: hit ids then die with a restart, which is fine locally. Production
-     * must set it (compose.prod.yaml), or ids differ between instances and restarts.
+     * must set it (deploy/backend/compose.yaml), or ids differ between instances and restarts.
      */
     @Bean
     fun catalogHitIds(@Value($$"${booktracker.catalog.hit-id-secret:}") secret: String): CatalogHitIds {

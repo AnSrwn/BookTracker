@@ -19,4 +19,4 @@ booktracker:
       api-key: <your key>
 ```
 
-To run without Google instead, set `booktracker.bookdata.google-books.enabled: false` there, or `BOOKTRACKER_GOOGLE_BOOKS_ENABLED=false` in the environment. In production the key comes from `BOOKTRACKER_GOOGLE_BOOKS_API_KEY` (`compose.prod.yaml`).
+To run without Google instead, set `booktracker.bookdata.google-books.enabled: false` there, or `BOOKTRACKER_GOOGLE_BOOKS_ENABLED=false` in the environment. On the servers the key comes from `BOOKTRACKER_GOOGLE_BOOKS_API_KEY`, a stack variable (`deploy/backend/compose.yaml`, see `docs/deployment.md`).

@@ -20,6 +20,17 @@ tasks.bootRun {
     systemProperty("spring.docker.compose.file", rootProject.file("compose.yaml").path)
 }
 
+springBoot {
+    // Served by /actuator/info. The deploy workflow waits until the new commit answers there,
+    // so a container still running the old image cannot pass for a successful deploy.
+    buildInfo {
+        properties {
+            additional = mapOf("commit" to providers.environmentVariable("GITHUB_SHA").getOrElse("local"))
+        }
+    }
+}
+
 tasks.bootBuildImage {
+    // The deploy workflow overrides this with --imageName=ghcr.io/…
     imageName = "booktracker-backend:latest"
 }
