@@ -69,8 +69,8 @@ Keycloak has its own workflow (`.github/workflows/keycloak.yml`). Changes on `ma
   - The realm files contain no users. Their `${…}` placeholders (the Swagger UI redirect and web origin per environment) are filled from the stack variables on import.
   - The local realm `keycloak/realm-booktracker.json` with its test users is only for `compose.yaml` on the laptop.
 - **Settings for the first deployment:** no sign-up, no "forgot password" (there is no mail server yet), brute force protection on. Accounts are created in the admin console.
-- **The admin console** and the master realm (`/admin/` and `/realms/master/`) ask for an extra password at the reverse proxy, before Keycloak's own login. Both paths are needed: the master realm's login endpoints alone would allow password guessing on the admin account.
-- **The bootstrap admin** from the stack variables exists only for the first start. Replace it with a personal admin account that uses two-factor login, then delete it and remove its variables.
+- **The admin console page and the master realm** (`/admin/master/console/` and `/realms/master/`) ask for an extra password (HTTP Basic) at the reverse proxy, before Keycloak's own login. `/realms/master/` holds the admin login and token endpoints, so this is what stops password guessing on the admin account. The admin API under `/admin/realms/` and the console's `/admin/master/console/whoami` stay without it: the console sends `Authorization: Bearer …` there, which a Basic password would collide with (without `whoami` the console shows no realm menu), and both are useless without a master-realm token anyway.
+- **The bootstrap admin** is not in the compose file. For the very first start, add `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` to the Keycloak service's environment in Portainer's editor by hand. Replace it with a personal admin account that uses two-factor login, delete it, and remove both lines again (the next deploy from the workflow does that anyway). Do not leave either variable set but empty: Keycloak then refuses to start. The same two lines also recover access if every admin is locked out.
 - **Token checks:** the backend checks a token's issuer against the public realm URL. It loads the signing keys inside Docker (`http://booktracker-keycloak:8080/…`) instead of through the proxy.
 - **Never change the public Keycloak host name** once users exist. It is part of every token and every redirect URI.
 
@@ -84,7 +84,7 @@ Swagger UI and `/v3/api-docs` stay reachable on both environments, but ask for a
 
 | Where | What |
 |---|---|
-| Portainer, stack variables | Every server setting and secret: database credentials, issuer URL, hit-id secret, Google key, Swagger password, Keycloak bootstrap admin. Names: `deploy/backend/stack.env.example`, `deploy/keycloak/stack.env.example` |
+| Portainer, stack variables | Every server setting and secret: database credentials, issuer URL, hit-id secret, Google key, Swagger password. Names: `deploy/backend/stack.env.example`, `deploy/keycloak/stack.env.example` |
 | Portainer, registry | Read access to GHCR (a token with `read:packages`), so Portainer can pull the private images |
 | GitHub, repository secret | `PORTAINER_TOKEN`: the access token of a Portainer user that may update only the BookTracker stacks |
 | GitHub, repository variables | `PORTAINER_URL`, `PORTAINER_ENDPOINT_ID`, `DEV_STACK_ID`, `PROD_STACK_ID`, `KEYCLOAK_STACK_ID`, `DEV_API_URL`, `PROD_API_URL`, `AUTH_URL` |
@@ -102,10 +102,10 @@ The order matters, because each step needs the one before it. The deploy jobs sk
    - Create a deploy user and its access token.
 3. **Merge the workflows into `main`.** This builds the backend and Keycloak images. The deploys are skipped.
 4. **Keycloak stack:**
-   - Create the stack from `deploy/keycloak/compose.yaml` with its variables, `IMAGE_TAG` set to the Keycloak image built in step 3.
+   - Create the stack from `deploy/keycloak/compose.yaml` with its variables, `IMAGE_TAG` set to the Keycloak image built in step 3, plus the two bootstrap admin lines (see *Keycloak* above).
    - Give the deploy user access to it.
-5. **Reverse proxy:** one proxy host per host name with a TLS certificate, and the extra password on the auth host's `/admin/` and `/realms/master/`.
-6. **Keycloak:** a personal admin with two-factor login, remove the bootstrap admin, create the first users.
+5. **Reverse proxy:** one proxy host per host name with a TLS certificate, and the extra password on the auth host's `/admin/master/console/` and `/realms/master/`.
+6. **Keycloak:** a personal admin with two-factor login, delete the bootstrap admin and remove its two lines, create the first users.
 7. **Backend stacks:** create `booktracker-dev` and `booktracker-prod` from `deploy/backend/compose.yaml`, each with its own variables (`IMAGE_TAG`: the backend image from step 3), and give the deploy user access.
 8. **GitHub:** the secret and variables from the table above.
 9. **First deploys:** the next push to `main` deploys dev, and the first tag deploys prod.
