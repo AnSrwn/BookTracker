@@ -1,0 +1,2 @@
+# Keep saved test pages out of GitHub's language stats.
+backend/adapter/bookdata/src/test/resources/fixtures/** linguist-detectable=false
