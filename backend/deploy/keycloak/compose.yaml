@@ -26,6 +26,13 @@ services:
       # Filled into the realm files on import (Swagger UI redirect and web origin per environment)
       BOOKTRACKER_DEV_API_URL: ${BOOKTRACKER_DEV_API_URL:?BOOKTRACKER_DEV_API_URL must be set}
       BOOKTRACKER_PROD_API_URL: ${BOOKTRACKER_PROD_API_URL:?BOOKTRACKER_PROD_API_URL must be set}
+      # SMTP for verification and password reset mails, filled into both realm files on import.
+      # Existing realms keep what is set in the admin console (Realm settings → Email).
+      BOOKTRACKER_SMTP_HOST: ${BOOKTRACKER_SMTP_HOST:?BOOKTRACKER_SMTP_HOST must be set}
+      BOOKTRACKER_SMTP_PORT: ${BOOKTRACKER_SMTP_PORT:?BOOKTRACKER_SMTP_PORT must be set}
+      BOOKTRACKER_SMTP_FROM: ${BOOKTRACKER_SMTP_FROM:?BOOKTRACKER_SMTP_FROM must be set}
+      BOOKTRACKER_SMTP_USERNAME: ${BOOKTRACKER_SMTP_USERNAME:?BOOKTRACKER_SMTP_USERNAME must be set}
+      BOOKTRACKER_SMTP_PASSWORD: ${BOOKTRACKER_SMTP_PASSWORD:?BOOKTRACKER_SMTP_PASSWORD must be set}
     networks:
       - default
       - proxy
