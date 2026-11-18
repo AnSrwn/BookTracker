@@ -52,7 +52,8 @@ flowchart LR
    3. Send the compose file of the deployed commit and all variables back, with "re-pull image" on.
 
    Portainer's stack update **replaces all stack variables** with the ones sent, which is why the script reads them first. The variables hold secrets, so the script never prints them or a response that contains them.
-4. **Wait** up to 5 minutes until `/actuator/info` reports the deployed commit and `/actuator/health` reports `UP`. Flyway migrates the database while the new container starts.
+4. **Wait for Portainer.** Since Portainer 2.45 the update only starts the deployment and answers at once. The script polls the stack until its status is "active", or stops with Portainer's error message (for example, a failed image pull).
+5. **Wait for the new version**, up to 5 minutes, until `/actuator/info` reports the deployed commit and `/actuator/health` reports `UP`. Flyway migrates the database while the new container starts.
    - If that doesn't happen, the workflow fails and GitHub reports it.
    - There is no automatic rollback, because a migration that already ran cannot be undone by starting the old image.
 
