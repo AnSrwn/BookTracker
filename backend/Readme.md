@@ -26,13 +26,13 @@ REST API for the BookTracker mobile app: Kotlin, Spring Boot, PostgreSQL. Hexago
 ./gradlew :bootstrap:bootRun
 ```
 
-Postgres and Keycloak start automatically from `compose.yaml`.
+Postgres and Keycloak start automatically from `compose.yaml`. The app needs a Google Books API key, or Google turned off. See [bootstrap/Readme.md](bootstrap/Readme.md).
 
 | Service | Port | Purpose |
 |---|---|---|
 | Backend | 8080 | REST API under `/api/v1`, Swagger UI at `/swagger-ui.html` |
 | PostgreSQL | 5432 | App database |
-| Keycloak | 8180 | IdP, admin console, realm `booktracker` (imported from `keycloak/realm-booktracker.json`) |
+| Keycloak | 8180 | IdP, admin console (`admin` / `admin`), realm `booktracker` (imported from `keycloak/realm-booktracker.json`) |
 
 - API: http://localhost:8080/api/v1
 - Swagger UI: http://localhost:8080/swagger-ui.html
@@ -40,4 +40,4 @@ Postgres and Keycloak start automatically from `compose.yaml`.
 
 ## Deploy
 
-A push to `main` deploys to dev, a tag `v<major>.<minor>.<patch>` on `main` deploys to prod. Details in [docs/deployment.md](docs/deployment.md).
+A push to `main` deploys to dev, a tag `v<major>.<minor>.<patch>` on `main` deploys to prod. Keycloak serves both and is deployed only by hand, with the Keycloak workflow. Details in [docs/deployment.md](docs/deployment.md).
