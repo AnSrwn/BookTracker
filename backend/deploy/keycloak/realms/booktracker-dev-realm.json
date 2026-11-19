@@ -4,6 +4,7 @@
   "displayName": "BookTracker (dev)",
   "sslRequired": "external",
   "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
   "resetPasswordAllowed": true,
   "verifyEmail": true,
   "smtpServer": {
