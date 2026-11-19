@@ -14,8 +14,8 @@
     "auth": "true",
     "user": "${BOOKTRACKER_SMTP_USERNAME}",
     "password": "${BOOKTRACKER_SMTP_PASSWORD}",
-    "ssl": "true",
-    "starttls": "false"
+    "ssl": "false",
+    "starttls": "true"
   },
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
