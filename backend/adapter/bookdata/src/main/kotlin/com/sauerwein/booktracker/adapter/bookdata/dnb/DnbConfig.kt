@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration
 
 /**
  * DNB publishes no rate limit; `rate-per-second: 1` is our own politeness towards a public
- * institution's service, not a stated ceiling (architecture §7).
+ * institution's service, not a stated ceiling (docs/book-data.md).
  */
 @Configuration
 @ConditionalOnProperty(prefix = "booktracker.bookdata.dnb", name = ["enabled"], havingValue = "true")

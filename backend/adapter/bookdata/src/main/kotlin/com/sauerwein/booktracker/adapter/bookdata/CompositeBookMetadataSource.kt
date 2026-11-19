@@ -15,7 +15,7 @@ import java.util.concurrent.Future
  * never name a source.
  *
  * Every provider that can serve a query is asked, in parallel on virtual threads, so a slow one
- * never holds up a fast one (architecture §7). What they return about one edition — one ISBN —
+ * never holds up a fast one (docs/book-data.md). What they return about one edition — one ISBN —
  * is merged field by field ([BookCandidateMerge]): a scan stores the merged record (9.9 Q1), and
  * a search shows one hit per ISBN. Hits without an ISBN are never merged (9.9 Q5).
  *

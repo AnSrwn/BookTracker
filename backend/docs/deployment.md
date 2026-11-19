@@ -133,4 +133,4 @@ The order matters, because each step needs the one before it. The deploy jobs sk
 - **Backups.** Losing the server or a volume loses every account and every book. A lost Keycloak database also orphans every user's rows, because `owner_id` has no foreign key.
 - **Monitoring and alerts.** An outage is only noticed in use.
 - **Privacy policy, imprint and account deletion.** Sign-up is open, so the app stores strangers' email addresses. The legal pages and a "delete my account" path are still missing (Keycloak deletes the account, but the app's rows stay behind, since `owner_id` has no foreign key).
-- **More than one server.** The per-IP rate limits towards the book sources assume a single instance (see [architecture.md](architecture.md), *External Book Data*).
+- **More than one server.** The per-IP rate limits towards the book sources assume a single instance (see [book-data.md](book-data.md#6-rate-limits--resilience)).
