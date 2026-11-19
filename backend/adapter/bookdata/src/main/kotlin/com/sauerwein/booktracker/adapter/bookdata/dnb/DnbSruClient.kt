@@ -20,7 +20,7 @@ private val XML_TYPES = listOf(MediaType.APPLICATION_XML, MediaType.TEXT_XML, Me
 
 /**
  * The Deutsche Nationalbibliothek over SRU, MARC21-XML. An ISBN lookup and field authority,
- * never a search provider: SRU cannot rank by relevance (architecture §7). Free, no key, no
+ * never a search provider: SRU cannot rank by relevance (docs/book-data.md). Free, no key, no
  * registration, CC0. Throttling sits in the RestClient, circuit breaking and metrics in the
  * ResilientBookMetadataSource around it — as for Open Library.
  */

@@ -48,7 +48,7 @@ private val KEPT_JOINERS = setOf('\u200C', '\u200D')
 internal fun idnOrNull(value: String): SourceRecordId? = value.takeIf(IDN::matches)?.let(::SourceRecordId)
 
 /**
- * MARC21 → [BookCandidate], by hand for the six fields we need (architecture §7). Returns `null`
+ * MARC21 → [BookCandidate], by hand for the six fields we need (docs/book-data.md). Returns `null`
  * for a record we must not use: not print (ADR-008), no title, no IDN, or — on an ISBN lookup — not
  * carrying the asked ISBN as a valid `020$a`. A record without an author is kept with none (9.10 Q9):
  * the Duden, the Bible, an anonymous epic. Editors and issuing bodies are never made authors (Q11).

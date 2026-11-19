@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
 /**
- * One uniform block per provider, so adding one is filling in a block (architecture §7).
+ * One uniform block per provider, so adding one is filling in a block (docs/book-data.md).
  * Each provider is switched on by its own `enabled` (`@ConditionalOnProperty` on its config);
  * a block that is missing or disabled leaves no trace in the running application.
  */
