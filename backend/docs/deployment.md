@@ -12,7 +12,7 @@ There are two environments, **dev** and **prod**, on one Docker host managed wit
 | Image tag | `sha-<short commit>` | the tag, e.g. `v0.1.0` |
 | Keycloak realm | `booktracker-dev` | `booktracker` |
 | Database | its own Postgres | its own Postgres |
-| Sign-up | closed | closed (for now, see [Not covered yet](#not-covered-yet)) |
+| Sign-up | open, with email verification | open, with email verification |
 
 Feature branches go into `main` by pull request. There is no `develop` branch and no release branch: `main` always runs on dev, and a tag promotes that state to prod. The tag build compiles the tagged commit again (it does not reuse dev's image), and it refuses a tag whose commit is not on `main`.
 
@@ -71,8 +71,11 @@ Keycloak has its own workflow (`.github/workflows/keycloak.yml`). Changes on `ma
   - `--import-realm` creates a realm only if it doesn't exist yet, so a redeploy never resets one. Changes to an existing realm go through the admin console.
   - The realm files contain no users. Their `${…}` placeholders (the Swagger UI redirect and web origin per environment) are filled from the stack variables on import.
   - The local realm `keycloak/realm-booktracker.json` with its test users is only for `compose.yaml` on the laptop.
-- **Settings for the first deployment:** no sign-up, no "forgot password" (there is no mail server yet), brute force protection on. Accounts are created in the admin console.
-- **The admin console page and the master realm** (`/admin/master/console/` and `/realms/master/`) ask for an extra password (HTTP Basic) at the reverse proxy, before Keycloak's own login. `/realms/master/` holds the admin login and token endpoints, so this is what stops password guessing on the admin account. The admin API under `/admin/realms/` and the console's `/admin/master/console/whoami` stay without it: the console sends `Authorization: Bearer …` there, which a Basic password would collide with (without `whoami` the console shows no realm menu), and both are useless without a master-realm token anyway.
+- **Sign-up:** open in both realms. A new user must confirm their email address before the first login, and "forgot password" works. New users get the `user` role through the realm's default role. The email address is the username (*Email as username*, in the realm files), and first and last name are optional. Making the names optional is a manual setting per realm in the admin console (*Realm settings → User profile → firstName / lastName → Required field* off), since the user profile lives in an embedded configuration the realm files do not carry. The backend reads neither: it identifies users by the Keycloak `sub` only.
+- **Changing the email address:** users change it themselves in the account console (*Personal info → Update email*). The new address only replaces the old one after the user clicks a link sent to it. The backend is not affected, since it identifies users by the Keycloak `sub`, not by their email. This needs two settings **per realm in the admin console**, which the realm files do not carry: *Authentication → Required actions → Update Email* enabled, and in its configuration *Force Email Verification* on. (The realm files leave required actions out on purpose: a `requiredActions` list in a realm file replaces Keycloak's whole default list, so an incomplete one would, for example, switch off *Verify Email* on a fresh install.)
+- **Mail:** Keycloak sends verification and reset mails through an SMTP mailbox on the project's domain, on port 587 with STARTTLS. Port 465 (implicit TLS) does not work from the server: cloud providers commonly block outgoing traffic on 25 and 465 against spam, and 587 stays open. For a fresh realm, the realm files take the server, sender, login and password from the `BOOKTRACKER_SMTP_*` stack variables on import. For realms that already exist, the settings live in the admin console (*Realm settings → Email*), so changing the variables alone changes nothing there. The domain needs an SPF record (and DKIM, where the mail provider offers it) that allows the SMTP server to send for it, or the mails land in spam.
+- **Brute force protection** is on in both app realms and in the master realm, with a temporary lockout.
+- **The admin console** is public like the login pages. The admin account is protected by its password, two-factor login (OTP) and the master realm's brute force protection. An extra Basic password at the reverse proxy was tried first and dropped: the console and the account console call Keycloak with `Authorization: Bearer …`, which collides with Basic auth on the same paths.
 - **The bootstrap admin** is not in the compose file. For the very first start, add `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` to the Keycloak service's environment in Portainer's editor by hand. Replace it with a personal admin account that uses two-factor login, delete it, and remove both lines again (the next deploy from the workflow does that anyway). Do not leave either variable set but empty: Keycloak then refuses to start. The same two lines also recover access if every admin is locked out.
 - **Token checks:** the backend checks a token's issuer against the public realm URL. It loads the signing keys inside Docker (`http://booktracker-keycloak:8080/…`) instead of through the proxy.
 - **Never change the public Keycloak host name** once users exist. It is part of every token and every redirect URI.
@@ -87,7 +90,7 @@ Swagger UI and `/v3/api-docs` stay reachable on both environments, but ask for a
 
 | Where | What |
 |---|---|
-| Portainer, stack variables | Every server setting and secret: database credentials, issuer URL, hit-id secret, Google key, Swagger password. Names: `deploy/backend/stack.env.example`, `deploy/keycloak/stack.env.example` |
+| Portainer, stack variables | Every server setting and secret: database credentials, issuer URL, hit-id secret, Google key, Swagger password, SMTP login. Names: `deploy/backend/stack.env.example`, `deploy/keycloak/stack.env.example` |
 | Portainer, registry | Read access to GHCR (a token with `read:packages`), so Portainer can pull the private images |
 | GitHub, repository secret | `PORTAINER_TOKEN`: the access token of a Portainer user that may update only the BookTracker stacks |
 | GitHub, repository variables | `PORTAINER_URL`, `PORTAINER_ENDPOINT_ID`, `DEV_STACK_ID`, `PROD_STACK_ID`, `KEYCLOAK_STACK_ID`, `DEV_API_URL`, `PROD_API_URL`, `AUTH_URL` |
@@ -99,16 +102,17 @@ Filled-in copies of the `*.env` files are ignored by git. Images are pushed with
 The order matters, because each step needs the one before it. The deploy jobs skip themselves while their stack id variable is not set, so the workflows can be merged before the stacks exist. The merge builds the first images.
 
 1. **DNS:** one record per host name, pointing at the server. With Cloudflare, use "DNS only": its free certificate covers one subdomain level only, and the reverse proxy gets its own certificates.
+   - **Mail:** a mailbox for the sender address at the domain's mail provider, and an SPF record (plus DKIM, if offered) that allows the provider's servers to send for the domain.
 2. **Portainer:**
    - Create the network `booktracker-proxy` and connect the reverse proxy's container to it.
    - Add the GHCR registry.
    - Create a deploy user and its access token.
 3. **Merge the workflows into `main`.** This builds the backend and Keycloak images. The deploys are skipped.
 4. **Keycloak stack:**
-   - Create the stack from `deploy/keycloak/compose.yaml` with its variables, `IMAGE_TAG` set to the Keycloak image built in step 3, plus the two bootstrap admin lines (see *Keycloak* above).
+   - Create the stack from `deploy/keycloak/compose.yaml` with its variables (including the SMTP login), `IMAGE_TAG` set to the Keycloak image built in step 3, plus the two bootstrap admin lines (see *Keycloak* above).
    - Give the deploy user access to it.
-5. **Reverse proxy:** one proxy host per host name with a TLS certificate, and the extra password on the auth host's `/admin/master/console/` and `/realms/master/`.
-6. **Keycloak:** a personal admin with two-factor login, delete the bootstrap admin and remove its two lines, create the first users.
+5. **Reverse proxy:** one proxy host per host name with a TLS certificate and *Force SSL*.
+6. **Keycloak:** a personal admin with two-factor login and an email address, delete the bootstrap admin and remove its two lines, turn on brute force protection in the master realm. Check *Realm settings → Email → Test connection* in both app realms, enable *Update Email* with *Force Email Verification*, and make first and last name optional in the user profile (see *Keycloak* above).
 7. **Backend stacks:** create `booktracker-dev` and `booktracker-prod` from `deploy/backend/compose.yaml`, each with its own variables (`IMAGE_TAG`: the backend image from step 3), and give the deploy user access.
 8. **GitHub:** the secret and variables from the table above.
 9. **First deploys:** the next push to `main` deploys dev, and the first tag deploys prod.
@@ -128,5 +132,5 @@ The order matters, because each step needs the one before it. The deploy jobs sk
 
 - **Backups.** Losing the server or a volume loses every account and every book. A lost Keycloak database also orphans every user's rows, because `owner_id` has no foreign key.
 - **Monitoring and alerts.** An outage is only noticed in use.
-- **Open sign-up.** It needs a mail server, email verification and a decision on the legal pages and account deletion.
+- **Privacy policy, imprint and account deletion.** Sign-up is open, so the app stores strangers' email addresses. The legal pages and a "delete my account" path are still missing (Keycloak deletes the account, but the app's rows stay behind, since `owner_id` has no foreign key).
 - **More than one server.** The per-IP rate limits towards the book sources assume a single instance (see [architecture.md](architecture.md), *External Book Data*).
