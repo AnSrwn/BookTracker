@@ -25,6 +25,8 @@ private const val BOOKS_PATH = "books"
 /**
  * The caller's books. The path names the kind of book a write is about: `private` creates
  * the caller's own book, `catalog` adds a shared catalog book without copying it.
+ *
+ * Swagger docs are in [BookApi].
  */
 @RestController
 @RequestMapping("/$BOOKS_PATH")
@@ -34,15 +36,15 @@ class BookController(
     private val getBookUseCase: GetBookUseCase,
     private val getBooksUseCase: GetBooksUseCase,
     private val catalogHitIds: CatalogHitIds,
-) {
+) : BookApi {
     @PostMapping("/private")
-    fun createPrivate(@Valid @RequestBody request: CreatePrivateBookRequest): ResponseEntity<BookResponse> {
+    override fun createPrivate(@Valid @RequestBody request: CreatePrivateBookRequest): ResponseEntity<BookResponse> {
         return created(createPrivateBookUseCase(command = request.toCommand()))
     }
 
     /** [id] is opaque: a stored book's UUID or a search hit's signed id, exactly as search or scan returned it. */
     @PostMapping("/catalog/{id}")
-    fun addCatalogBook(@PathVariable id: String): ResponseEntity<BookResponse> {
+    override fun addCatalogBook(@PathVariable id: String): ResponseEntity<BookResponse> {
         val ref = runCatching { CatalogBookRef.Stored(BookId(UUID.fromString(id))) }.getOrNull()
             ?: catalogHitIds.decode(id)
             // Forged, tampered or garbled: indistinguishable from an unknown id, on purpose
@@ -52,12 +54,12 @@ class BookController(
     }
 
     @GetMapping
-    fun getAll(): List<BookResponse> {
+    override fun getAll(): List<BookResponse> {
         return getBooksUseCase().map { it.toResponse() }
     }
 
     @GetMapping("/{id}")
-    fun getById(@PathVariable id: UUID): BookResponse {
+    override fun getById(@PathVariable id: UUID): BookResponse {
         return getBookUseCase(id = BookId(id)).toResponse()
     }
 
