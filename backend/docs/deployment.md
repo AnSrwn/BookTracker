@@ -92,8 +92,8 @@ Swagger UI and `/v3/api-docs` stay reachable on both environments, but ask for a
 |---|---|
 | Portainer, stack variables | Every server setting and secret: database credentials, issuer URL, hit-id secret, Google key, Swagger password, SMTP login. Names: `deploy/backend/stack.env.example`, `deploy/keycloak/stack.env.example` |
 | Portainer, registry | Read access to GHCR (a token with `read:packages`), so Portainer can pull the private images |
-| GitHub, repository secret | `PORTAINER_TOKEN`: the access token of a Portainer user that may update only the BookTracker stacks |
-| GitHub, repository variables | `PORTAINER_URL`, `PORTAINER_ENDPOINT_ID`, `DEV_STACK_ID`, `PROD_STACK_ID`, `KEYCLOAK_STACK_ID`, `DEV_API_URL`, `PROD_API_URL`, `AUTH_URL` |
+| GitHub, repository secrets | `PORTAINER_TOKEN`: the access token of a Portainer user that may update only the BookTracker stacks. `PORTAINER_URL`: a secret, not a variable, because Actions logs are public and only secrets are masked there |
+| GitHub, repository variables | `PORTAINER_ENDPOINT_ID`, `DEV_STACK_ID`, `PROD_STACK_ID`, `KEYCLOAK_STACK_ID`, `DEV_API_URL`, `PROD_API_URL`, `AUTH_URL` |
 
 Filled-in copies of the `*.env` files are ignored by git. Images are pushed with the workflow's own `GITHUB_TOKEN`, so no extra secret is needed for that.
 
@@ -114,7 +114,7 @@ The order matters, because each step needs the one before it. The deploy jobs sk
 5. **Reverse proxy:** one proxy host per host name with a TLS certificate and *Force SSL*.
 6. **Keycloak:** a personal admin with two-factor login and an email address, delete the bootstrap admin and remove its two lines, turn on brute force protection in the master realm. Check *Realm settings → Email → Test connection* in both app realms, enable *Update Email* with *Force Email Verification*, and make first and last name optional in the user profile (see *Keycloak* above).
 7. **Backend stacks:** create `booktracker-dev` and `booktracker-prod` from `deploy/backend/compose.yaml`, each with its own variables (`IMAGE_TAG`: the backend image from step 3), and give the deploy user access.
-8. **GitHub:** the secret and variables from the table above.
+8. **GitHub:** the secrets and variables from the table above.
 9. **First deploys:** the next push to `main` deploys dev, and the first tag deploys prod.
 
 ## Day to day

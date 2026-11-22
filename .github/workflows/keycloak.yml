@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v5.1.0
       - name: Deploy Keycloak
         env:
-          PORTAINER_URL: ${{ vars.PORTAINER_URL }}
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
           PORTAINER_ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
           PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
         run: >-
