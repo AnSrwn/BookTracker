@@ -2,7 +2,7 @@
 
 A mobile app to keep track of your own books. Scan the barcode or add a book by hand, sort your books onto shelves and track your reading progress.
 
-So far the repository holds only the backend. The mobile app does not exist yet.
+The repository holds the backend and the mobile app. The app is a skeleton so far: three tabs with placeholder screens, the features follow.
 
 ## Features
 
@@ -26,9 +26,13 @@ Details in [backend/docs/mvp-features.md](backend/docs/mvp-features.md).
 
 ## Tech stack
 
-Kotlin, Spring Boot, PostgreSQL and Keycloak. Book data comes from Google Books, Open Library and the German National Library (DNB).
+- Backend: Kotlin, Spring Boot, PostgreSQL and Keycloak. Book data comes from Google Books, Open Library and the German National Library (DNB).
+- App: Kotlin, Compose Multiplatform for Android and iOS, with a native tab bar on iOS.
 
 ## Repository
 
 - [`backend/`](backend/Readme.md): the REST API, with setup and run instructions
 - [`backend/docs/`](backend/docs): architecture, book data, decision records, deployment
+- [`app/`](app/README.md): the mobile app for Android and iOS, with setup and run instructions
+- [`app/docs/`](app/docs): app architecture and decision records
+- [`AGENTS.md`](AGENTS.md): rules for coding agents (Claude, Codex)

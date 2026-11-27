@@ -1,0 +1,7 @@
+<resources>
+    <string name="account_title">Account</string>
+    <string name="account_body">Die Anmeldung kommt mit dem Auth-Schritt.</string>
+    <string name="account_about">Über die App</string>
+    <string name="about_title">Über die App</string>
+    <string name="about_body">BookTracker für Android und iOS.</string>
+</resources>

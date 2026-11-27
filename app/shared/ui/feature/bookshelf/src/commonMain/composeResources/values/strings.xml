@@ -1,0 +1,7 @@
+<resources>
+    <string name="bookshelf_title">Bookshelf</string>
+    <string name="bookshelf_body">Your books will appear here.</string>
+    <string name="bookshelf_open_sample">Open sample book</string>
+    <string name="book_detail_title">Book</string>
+    <string name="book_detail_body">Book details come with the bookshelf feature.</string>
+</resources>

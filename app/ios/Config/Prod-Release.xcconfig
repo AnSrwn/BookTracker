@@ -1,0 +1,9 @@
+// Prod app, Release build
+#include "Base.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.sauerwein.booktracker
+APP_DISPLAY_NAME = BookTracker
+BOOKTRACKER_FLAVOR = prod
+
+// Picks the debug or release Kotlin framework; the configuration names alone do not tell Gradle
+KOTLIN_FRAMEWORK_BUILD_TYPE = release

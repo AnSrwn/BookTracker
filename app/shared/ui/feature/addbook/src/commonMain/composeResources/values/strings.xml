@@ -1,0 +1,10 @@
+<resources>
+    <string name="add_book_title">Add book</string>
+    <string name="add_book_search_label">Title, author or ISBN</string>
+    <string name="add_book_search">Search</string>
+    <string name="add_book_search_pending">Searching for “%1$s” comes with the add-book feature.</string>
+    <string name="add_book_scan">Scan barcode</string>
+    <string name="add_book_manual">Add manually</string>
+    <string name="manual_book_title">Add manually</string>
+    <string name="manual_book_body">The form comes with the add-book feature.</string>
+</resources>

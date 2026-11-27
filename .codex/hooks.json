@@ -1,0 +1,52 @@
+{
+  "description": "BookTracker: the same hook scripts as for Claude Code (.claude/settings.json). See AGENTS.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/tools/agent-hooks/guard.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/tools/agent-hooks/format-kotlin.sh",
+            "timeout": 120,
+            "statusMessage": "Formatting Kotlin with ktlint"
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/tools/agent-hooks/track-edits.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/tools/agent-hooks/check-app.sh",
+            "timeout": 600,
+            "statusMessage": "Building and testing the changed app modules"
+          }
+        ]
+      }
+    ]
+  }
+}

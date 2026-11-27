@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "tab.account" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Account" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Account" } }
+      }
+    },
+    "tab.addBook" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Hinzufügen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add" } }
+      }
+    },
+    "tab.bookshelf" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Regal" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bookshelf" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}
