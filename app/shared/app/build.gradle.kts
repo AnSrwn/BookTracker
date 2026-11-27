@@ -27,6 +27,7 @@ kotlin {
             implementation(projects.shared.ui.feature.account)
             implementation(libs.navigation3.ui)
             implementation(libs.lifecycle.viewmodel.navigation3)
+            implementation(libs.koin.compose)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

@@ -1,4 +1,4 @@
-package com.sauerwein.booktracker.ui.feature.addbook
+package com.sauerwein.booktracker.ui.feature.addbook.search
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList

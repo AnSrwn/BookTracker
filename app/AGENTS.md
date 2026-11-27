@@ -38,22 +38,28 @@ The turn-end hook already runs the tests and compile checks of the modules you c
 - Features never depend on each other. To open a screen of another tab's feature, navigate to its key.
 - Konsist tests in `shared/app/src/androidHostTest/.../ArchitectureTest.kt` enforce these import rules. Add a rule there when you add one here.
 - ViewModels call use cases from `core`, never `data` directly.
-- A new feature module: add it to `settings.gradle.kts` and to `shared/app` (dependency, its `…Destinations` in `Tabs.kt`; Koin finds its root module on its own). Otherwise iOS never sees it.
+- A new feature module: add it to `settings.gradle.kts`, as a dependency of `shared/app`, and give it `di/<Feature>Module.kt`. Koin finds its module, destinations and ViewModels on its own. Without the `shared/app` dependency iOS never sees it.
 - Package = module path: `shared/ui/feature/bookshelf` is `com.sauerwein.booktracker.ui.feature.bookshelf`.
 
 ## Screens
 
-Follow [ADR-003](docs/adr/003-screen-pattern.md). `AddBookViewModel`, `AddBookScreen` and `AddBookDestinations` in `shared/ui/feature/addbook` are the reference.
+Follow [ADR-003](docs/adr/003-screen-pattern.md). `shared/ui/feature/addbook/.../search/` is the reference.
 
-1. `XState` (data class), `XEvent` and `XEffect` (sealed interfaces) next to `XViewModel : ScreenViewModel<XState, XEvent, XEffect>`.
-2. `XScreen` calls `ScreenHost(viewModel, onEffect) { state, onEvent -> XContent(state, onEvent, …) }`. `XContent` is stateless.
-3. `XDestination : ScreenDestination<XKey>` connects the key, the screen and the `Navigator`. List it in the feature's `…Destinations`.
-4. Annotate the ViewModel with `@KoinViewModel`. The feature's root module in `di/` picks it up.
+Each screen has its own package `ui.feature.<feature>.<screen>` with one file per part:
+
+| File | Contains | Knows |
+|---|---|---|
+| `XContract.kt` | `XState` (data class), `XEvent` and `XEffect` (sealed interfaces), nothing else | nothing; screen and ViewModel both depend on it, not on each other |
+| `XScreen.kt` | only the `XScreen(state, onEvent)` composable | its contract, never a ViewModel or Koin, so it works in a preview |
+| `XViewModel.kt` | only `@KoinViewModel class XViewModel : ScreenViewModel<XState, XEvent, XEffect>` | its contract and use cases from `core` |
+| `XDestination.kt` | `@Singleton internal class XDestination : ScreenDestination<XKey>` | the orchestrator: gets the ViewModel with `koinViewModel()`, runs `ScreenHost`, routes events, turns effects into navigation or messages |
 
 Rules:
 
-- Navigation without logic is a callback from the screen. Navigation or a message after logic or async work is an `Effect`.
-- A screen without state or logic has no ViewModel.
+- `XScreen` takes only `state` and `onEvent` (and `modifier`). Callbacks, snackbar hosts or ViewModels are not parameters; the destination places a snackbar host around the screen if needed.
+- Navigation without logic is an event the destination handles itself (`XEvent.YClicked -> navigator.navigate(…)`), without the ViewModel. Navigation or a message after logic or async work is an `Effect`.
+- A screen without state or logic has no ViewModel: `XContract.kt` with only `XEvent`, `XScreen(onEvent)` and `XDestination`.
+- Koin collects every `@Singleton` destination; there are no lists to maintain.
 - Keep `ScreenViewModel` small. No loading, error or retry handling in it; that belongs in use cases or helpers.
 - Local-first ([ADR-004](docs/adr/004-local-first.md)): ViewModels read data from database flows (`collectIntoState`), never straight from the API.
 
@@ -64,7 +70,7 @@ Koin Annotations with the Koin Compiler Plugin ([ADR-007](docs/adr/007-koin-anno
 - Put the lifetime on the class: `@Singleton`, `@Factory`, `@KoinViewModel` (from `org.koin.core.annotation`). Inject through the constructor. No `KoinComponent`, no DSL `module { }` blocks.
 - Each Gradle module with definitions has exactly one root module, in its own file in the `di` package: `@Module @Configuration @ComponentScan("<module package>") class XModule`. Create it with the module's first definition. All three annotations are required; without them the module is skipped at runtime.
 - Types that need a builder (Ktor client, Room database) get a `@Singleton fun` inside the root module.
-- Values known only at start come from `koin.declare(…)` in `initKoin` and are received with `@Provided`.
+- Values known only at start come from `koin.declare(…)` in `initKoin` and are received with `@Provided` on the parameter. `AppFlavor` is such a value: never add a definition for it; a consumer marks its parameter `@Provided` (`@Provided` on the class is not seen across Gradle modules).
 - Never Koin KSP (`koin-ksp-compiler`, `org.koin.ksp.generated`).
 - The build checks the graph: `[KOIN-D001]` / `[KOIN-D003]` means a definition or dependency is missing. Fix the definition, do not work around the check.
 - Konsist (`ArchitectureTest`) checks that modules live in `di` packages and carry all three annotations.

@@ -4,6 +4,9 @@ package com.sauerwein.booktracker.data.config
  * Which app is installed: the dev app (own app id, own name) or the prod app. Both can be
  * installed side by side, so each has its own login redirect scheme. The dev app starts on
  * the dev backend and may later switch to prod in its dev menu; it keeps its own scheme then.
+ *
+ * Never a Koin definition: `initKoin` declares it from the build flavor. Every consumer marks its
+ * parameter `@Provided` (review F26; `@Provided` on the class is not seen across Gradle modules).
  */
 enum class AppFlavor(
     val id: String,

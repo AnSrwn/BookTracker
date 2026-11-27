@@ -12,5 +12,9 @@ ktlint_code_style = ktlint_official
 # Composables are named like types (BookshelfScreen), as Compose expects
 ktlint_function_naming_ignore_when_annotated_with = Composable
 
+[*Contract.kt]
+# A screen's contract file is named after the screen (D52), not after its single type
+ktlint_standard_filename = disabled
+
 [*.{yml,yaml,json,xcstrings}]
 indent_size = 2

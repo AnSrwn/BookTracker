@@ -65,16 +65,19 @@ Package names follow the module path: `shared/ui/feature/bookshelf` is `com.saue
 
 ```mermaid
 flowchart LR
-    content["Content(state, onEvent)<br/>stateless composable"] -- Event --> vm["ScreenViewModel"]
-    vm -- State --> content
-    vm -- Effect --> host["ScreenHost / ScreenDestination"]
-    host -- navigate --> nav["Navigator"]
-    content -- "callback<br/>(navigation without logic)" --> host
+    screen["XScreen(state, onEvent)<br/>stateless, previewable"] -- Event --> dest["XDestination<br/>orchestrator"]
+    dest -- "navigation event" --> nav["Navigator"]
+    dest -- "other events" --> vm["XViewModel"]
+    vm -- State --> dest
+    dest -- State --> screen
+    vm -- Effect --> dest
+    dest -- "navigate / message" --> nav
 ```
 
-- A `ScreenDestination` per screen registers a Navigation 3 key, gets its ViewModel with `koinViewModel()` (scoped to the back stack entry) and turns callbacks and effects into navigation.
+- Each screen has its own package with `XContract.kt` (state, events, effects), `XScreen.kt`, `XViewModel.kt` and `XDestination.kt`. Screen and ViewModel depend on the contract, not on each other. The screen gets only `state` and `onEvent` and works in a preview.
+- The `ScreenDestination` is the orchestrator: it registers the Navigation 3 key, gets the ViewModel with `koinViewModel()` (scoped to the back stack entry), handles navigation events and effects, and forwards the other events. Koin collects all destinations.
 - `ScreenHost` collects the state with the lifecycle and the effects only while the screen is STARTED.
-- Navigation without logic is a callback. Navigation or a message after logic or async work is an `Effect`.
+- Navigation without logic is an event the destination handles itself. Navigation or a message after logic or async work is an `Effect`.
 - A screen without state or logic has no ViewModel.
 
 ## Dependency injection

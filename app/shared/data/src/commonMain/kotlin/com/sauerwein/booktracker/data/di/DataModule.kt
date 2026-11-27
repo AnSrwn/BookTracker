@@ -13,7 +13,7 @@ import org.koin.core.annotation.Singleton
 @Configuration
 @ComponentScan("com.sauerwein.booktracker.data")
 class DataModule {
-    /** [flavor] is declared at start from the build flavor (`initKoin`), not built by a definition. */
+    /** [flavor] is declared at start from the build flavor (`initKoin`), never built by a definition. */
     @Singleton
     fun environment(
         @Provided flavor: AppFlavor,
