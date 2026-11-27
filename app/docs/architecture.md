@@ -14,7 +14,7 @@
 | Language, UI | Kotlin 2.4, Compose Multiplatform 1.12, Material 3 |
 | Navigation | Navigation 3 (JetBrains multiplatform build) |
 | State | Jetpack ViewModel, own `ScreenViewModel` ([ADR-003](adr/003-screen-pattern.md)) |
-| Dependency injection | Koin |
+| Dependency injection | Koin Annotations, compiled and checked at build time by the Koin Compiler Plugin ([ADR-007](adr/007-koin-annotations.md)) |
 | Network | Ktor, DTOs written by hand (comes with the first feature) |
 | Local database | Room (comes with the bookshelf feature) |
 | Images | Coil 3 (comes with the bookshelf feature) |
@@ -76,6 +76,13 @@ flowchart LR
 - `ScreenHost` collects the state with the lifecycle and the effects only while the screen is STARTED.
 - Navigation without logic is a callback. Navigation or a message after logic or async work is an `Effect`.
 - A screen without state or logic has no ViewModel.
+
+## Dependency injection
+
+- Classes carry their lifetime (`@Singleton`, `@Factory`, `@KoinViewModel`) and get their dependencies through the constructor.
+- Each Gradle module with definitions has one root module in its `.di` package, e.g. `…ui.feature.addbook.di.AddBookModule`, tagged `@Module @Configuration @ComponentScan`.
+- `shared/app/.../app/di/AppKoin.kt` holds `@KoinApplication` and `initKoin`, which Android and iOS call once. The Compiler Plugin finds all root modules and checks the whole graph when `shared/app` compiles.
+- The build flavor is declared at start (`koin.declare`) and received with `@Provided`.
 
 ## Navigation
 

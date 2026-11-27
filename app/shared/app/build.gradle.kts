@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 // Builds the one Kotlin framework the iOS app links ("Shared"); every shared module reaches iOS through it.
 plugins {
     id("booktracker.kmp-compose")
+    id("booktracker.koin")
 }
 
 kotlin {
@@ -26,7 +27,6 @@ kotlin {
             implementation(projects.shared.ui.feature.account)
             implementation(libs.navigation3.ui)
             implementation(libs.lifecycle.viewmodel.navigation3)
-            implementation(libs.koin.core)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

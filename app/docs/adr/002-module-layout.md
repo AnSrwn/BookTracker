@@ -15,7 +15,7 @@
 | `android` | Android app: Activity, Application, resources | `shared/app` |
 | `ios` (not Gradle) | Xcode project, native tab bar | framework `Shared` |
 
-Rule: `ui` → `core`, `data` → `core`. `ui` never sees `data`; only `app` knows every module and wires `data` into `ui` through Koin.
+Rule: `ui` → `core`, `data` → `core`. `ui` never sees `data`; only `app` knows every module; Koin wires `data` into `ui` at runtime ([ADR-007](007-koin-annotations.md)).
 
 - **Consequences:**
   - ➕ The folder tells the layer: everything under `shared/ui/` is UI, `core` and `data` are not.

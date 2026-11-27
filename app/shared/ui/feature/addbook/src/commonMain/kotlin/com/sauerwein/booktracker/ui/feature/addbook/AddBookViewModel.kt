@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.ui.feature.addbook
 
 import com.sauerwein.booktracker.ui.common.ScreenViewModel
+import org.koin.core.annotation.KoinViewModel
 
 data class AddBookState(
     val query: String = "",
@@ -26,6 +27,7 @@ sealed interface AddBookEffect {
     ) : AddBookEffect
 }
 
+@KoinViewModel
 class AddBookViewModel : ScreenViewModel<AddBookState, AddBookEvent, AddBookEffect>(AddBookState()) {
     override fun onEvent(event: AddBookEvent) {
         when (event) {

@@ -1,6 +1,7 @@
 package com.sauerwein.booktracker.app
 
 import androidx.compose.ui.window.ComposeUIViewController
+import com.sauerwein.booktracker.app.di.initKoin
 import com.sauerwein.booktracker.ui.designsystem.BookTrackerTheme
 import com.sauerwein.booktracker.ui.navigation.AppTab
 import platform.UIKit.UIViewController

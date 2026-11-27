@@ -10,16 +10,9 @@ import com.sauerwein.booktracker.ui.navigation.AddBookKey
 import com.sauerwein.booktracker.ui.navigation.ManualBookKey
 import com.sauerwein.booktracker.ui.navigation.Navigator
 import org.jetbrains.compose.resources.stringResource
-import org.koin.core.module.dsl.viewModelOf
-import org.koin.dsl.module
 
 /** All screens of the add-book tab, registered by shared/app. */
 val addBookDestinations: List<ScreenDestination<*>> = listOf(AddBookDestination, ManualBookDestination)
-
-val addBookModule =
-    module {
-        viewModelOf(::AddBookViewModel)
-    }
 
 private object AddBookDestination : ScreenDestination<AddBookKey>(AddBookKey::class) {
     @Composable

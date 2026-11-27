@@ -2,6 +2,7 @@
 // they navigate through the keys in shared/ui/navigation.
 plugins {
     id("booktracker.kmp-compose")
+    id("booktracker.koin")
 }
 
 kotlin {
@@ -13,7 +14,6 @@ kotlin {
             implementation(project(":shared:ui:designsystem"))
             implementation(catalogLibrary("navigation3-ui"))
             implementation(catalogLibrary("lifecycle-viewmodel"))
-            implementation(catalogLibrary("koin-core"))
             implementation(catalogLibrary("koin-compose-viewmodel"))
         }
         commonTest.dependencies {
