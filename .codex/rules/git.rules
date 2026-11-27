@@ -1,0 +1,18 @@
+# Commits and pushes need the user's explicit yes (AGENTS.md, D11). Codex hooks cannot ask,
+# so these rules make Codex prompt for approval instead.
+
+prefix_rule(
+    pattern = ["git", "commit"],
+    decision = "prompt",
+    justification = "Commits need the user's explicit yes",
+    match = ["git commit -m 'Add the app skeleton'"],
+    not_match = ["git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Pushes need the user's explicit yes",
+    match = ["git push -u origin feature/x"],
+    not_match = ["git pull"],
+)

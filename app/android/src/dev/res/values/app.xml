@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The dev app: own name and icon color, so it is easy to tell apart from the prod app. -->
+<resources>
+    <string name="app_name">BookTracker Dev</string>
+    <color name="ic_launcher_background">#FFE65100</color>
+</resources>

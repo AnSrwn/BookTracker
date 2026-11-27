@@ -1,0 +1,7 @@
+<resources>
+    <string name="bookshelf_title">Regal</string>
+    <string name="bookshelf_body">Hier erscheinen deine Bücher.</string>
+    <string name="bookshelf_open_sample">Beispielbuch öffnen</string>
+    <string name="book_detail_title">Buch</string>
+    <string name="book_detail_body">Die Buchdetails kommen mit dem Regal-Feature.</string>
+</resources>

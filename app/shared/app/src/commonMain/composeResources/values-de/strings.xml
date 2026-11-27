@@ -1,0 +1,5 @@
+<resources>
+    <string name="tab_bookshelf">Regal</string>
+    <string name="tab_add_book">Hinzufügen</string>
+    <string name="tab_account">Account</string>
+</resources>

@@ -1,0 +1,10 @@
+<resources>
+    <string name="add_book_title">Buch hinzufügen</string>
+    <string name="add_book_search_label">Titel, Autor oder ISBN</string>
+    <string name="add_book_search">Suchen</string>
+    <string name="add_book_search_pending">Die Suche nach „%1$s“ kommt mit dem Feature „Buch hinzufügen“.</string>
+    <string name="add_book_scan">Barcode scannen</string>
+    <string name="add_book_manual">Manuell anlegen</string>
+    <string name="manual_book_title">Manuell anlegen</string>
+    <string name="manual_book_body">Das Formular kommt mit dem Feature „Buch hinzufügen“.</string>
+</resources>
